@@ -123,7 +123,8 @@ export async function runMarketplace(args) {
   const options = parseWritableJsonArgs(args, {
     command: 'marketplace',
     jsonDescription: 'Print marketplace distribution packages as machine-readable JSON.',
-    outDescription: 'Write marketplace catalog JSON to a file.'
+    outDescription: 'Write marketplace catalog JSON to a file.',
+    outExample: 'marketplace.json'
   })
   const marketplace = listMarketplacePackages()
   const content = renderMarketplaceJson()
@@ -276,7 +277,7 @@ Options:
 
 function printWritableJsonHelp(help) {
   console.log(`Usage:
-  tpan-opt-co-worker ${help.command} [--json] [--out catalog.json] [--force]
+  tpan-opt-co-worker ${help.command} [--json] [--out ${help.outExample || 'catalog.json'}] [--force]
 
 Options:
   --json        ${help.jsonDescription}

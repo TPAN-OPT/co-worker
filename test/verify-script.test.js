@@ -11,6 +11,23 @@ import { compileWorkflow } from '../src/compiler.js'
 const execFileAsync = promisify(execFile)
 
 describe('generated verify-workflow script', () => {
+  it('prints help for generated verifier options', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const { stdout } = await execFileAsync('node', [scriptPath, '--help'])
+
+      assert.match(stdout, /--manual-evidence manual-evidence\.json/)
+      assert.match(stdout, /--report evidence\.json/)
+      assert.match(stdout, /--run-dir/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('runs command gates and prints manual gates', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
 
@@ -192,6 +209,37 @@ describe('generated verify-workflow script', () => {
           links: ['https://example.com/review/1']
         }
       })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects malformed manual evidence files', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const invalidJsonPath = join(targetDir, 'invalid-json.json')
+      const arrayEvidencePath = join(targetDir, 'array-evidence.json')
+      const missingGatesPath = join(targetDir, 'missing-gates.json')
+      await writeFile(invalidJsonPath, '{')
+      await writeFile(arrayEvidencePath, '[]')
+      await writeFile(missingGatesPath, '{"manual":{}}')
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--manual-evidence', invalidJsonPath]),
+        /Expected property name|Unexpected end of JSON input/
+      )
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--manual-evidence', arrayEvidencePath]),
+        /--manual-evidence must point to a JSON object/
+      )
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--manual-evidence', missingGatesPath]),
+        /--manual-evidence JSON must include a gates object/
+      )
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -188,6 +188,70 @@ describe('generated local runner script', () => {
       )
     } finally {
       await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('ignores unsafe runDir values from an existing run index', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-runner-'))
+    const outsideDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-outside-'))
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(localRunnerWorkflow()), targetDir, {
+        force: true
+      })
+      await mkdir(join(targetDir, '.tpan-opt-co-worker', 'runs'), { recursive: true })
+      await writeFile(
+        join(targetDir, '.tpan-opt-co-worker', 'runs', 'index.json'),
+        JSON.stringify({
+          runs: [
+            {
+              id: 'old-run',
+              workflow: {
+                name: 'poisoned',
+                version: '1.0.0'
+              },
+              runDir: `../${outsideDir.split('/').pop()}`,
+              status: 'passed',
+              commandPassed: true,
+              allGatesPassed: true,
+              finishedAt: '2026-01-01T00:00:00.000Z'
+            }
+          ]
+        })
+      )
+      await writeFile(
+        join(outsideDir, 'evidence.json'),
+        JSON.stringify({
+          commandGates: [{ id: 'leaked_command' }],
+          manualGates: [{ id: 'leaked_manual' }]
+        })
+      )
+
+      await execFileAsync(
+        'node',
+        [join(targetDir, 'scripts', 'run-workflow.mjs'), '--run-id', 'new-run'],
+        { cwd: targetDir }
+      )
+
+      const index = JSON.parse(
+        await readFile(join(targetDir, '.tpan-opt-co-worker', 'runs', 'index.json'), 'utf8')
+      )
+      const consoleRuns = JSON.parse(
+        await readFile(
+          join(targetDir, '.tpan-opt-co-worker', 'console', 'runs.json'),
+          'utf8'
+        )
+      )
+
+      assert.equal(index.runs[1].id, 'old-run')
+      assert.equal(index.runs[1].runDir, '.tpan-opt-co-worker/runs/old-run')
+      assert.deepEqual(consoleRuns.details['old-run'], {
+        commandGates: [],
+        manualGates: []
+      })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+      await rm(outsideDir, { recursive: true, force: true })
     }
   })
 })

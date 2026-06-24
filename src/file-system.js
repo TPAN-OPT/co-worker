@@ -1,4 +1,5 @@
-import { access, mkdir, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { access, lstat, mkdir, open, realpath } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 
 export async function writeCompiledOutputs(outputs, targetDir, options = {}) {
@@ -15,10 +16,15 @@ export async function writeCompiledOutputs(outputs, targetDir, options = {}) {
   }
 
   await assertNoOverwriteConflicts(safeOutputs, force)
+  await mkdir(targetRoot, { recursive: true })
+  const targetRealRoot = await realpath(targetRoot)
 
   for (const output of safeOutputs) {
+    await assertNoSymlinkInOutputPath(output, targetRoot)
     await mkdir(dirname(output.absolutePath), { recursive: true })
-    await writeFile(output.absolutePath, output.content, 'utf8')
+    await assertNoSymlinkInOutputPath(output, targetRoot)
+    await assertParentInsideTarget(output, targetRealRoot)
+    await writeFileNoFollow(output.absolutePath, output.content)
   }
 
   return {
@@ -47,6 +53,45 @@ function normalizeOutput(output, targetRoot) {
   }
 }
 
+async function assertParentInsideTarget(output, targetRealRoot) {
+  const parentRealPath = await realpath(dirname(output.absolutePath))
+  const isInsideTarget =
+    parentRealPath === targetRealRoot || parentRealPath.startsWith(`${targetRealRoot}${sep}`)
+
+  if (!isInsideTarget) {
+    throw new Error(`Unsafe output path "${output.path}" resolves outside the target directory`)
+  }
+}
+
+async function assertNoSymlinkInOutputPath(output, targetRoot) {
+  const segments = output.absolutePath
+    .slice(targetRoot.length)
+    .split(sep)
+    .filter(Boolean)
+  let currentPath = targetRoot
+
+  for (const segment of segments) {
+    currentPath = resolve(currentPath, segment)
+    const stats = await lstatIfExists(currentPath)
+
+    if (stats?.isSymbolicLink()) {
+      throw new Error(`Unsafe output path "${output.path}" resolves through a symbolic link`)
+    }
+  }
+}
+
+async function writeFileNoFollow(path, content) {
+  const noFollow = constants.O_NOFOLLOW || 0
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollow
+  const file = await open(path, flags, 0o666)
+
+  try {
+    await file.writeFile(content, 'utf8')
+  } finally {
+    await file.close()
+  }
+}
+
 async function assertNoOverwriteConflicts(outputs, force) {
   if (force) {
     return
@@ -68,6 +113,18 @@ async function fileExists(path) {
   } catch (error) {
     if (error && error.code === 'ENOENT') {
       return false
+    }
+
+    throw error
+  }
+}
+
+async function lstatIfExists(path) {
+  try {
+    return await lstat(path)
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return null
     }
 
     throw error

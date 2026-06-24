@@ -161,7 +161,7 @@ function createConsoleRunsData(index) {
 }
 
 function readRunDetails(run) {
-  const report = readEvidenceReport(run.runDir)
+  const report = readEvidenceReport(getRunDirForId(run.id))
   return {
     commandGates: Array.isArray(report?.commandGates) ? report.commandGates : [],
     manualGates: Array.isArray(report?.manualGates) ? report.manualGates : []
@@ -181,7 +181,24 @@ function readRunIndex() {
     throw new Error(\`\${RUN_INDEX_PATH} must include a runs array\`)
   }
 
-  return parsed
+  return {
+    runs: parsed.runs.map(normalizeRunRecord)
+  }
+}
+
+function normalizeRunRecord(run) {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) {
+    throw new Error(\`\${RUN_INDEX_PATH} runs must contain objects\`)
+  }
+
+  if (typeof run.id !== 'string' || !RUN_ID_PATTERN.test(run.id)) {
+    throw new Error(\`\${RUN_INDEX_PATH} run ids may only contain letters, numbers, dots, underscores, and hyphens\`)
+  }
+
+  return {
+    ...run,
+    runDir: getRunDirForId(run.id)
+  }
 }
 
 function getRunStatus(exitCode, report) {
@@ -198,6 +215,10 @@ function getRunStatus(exitCode, report) {
 
 function createDefaultRunId() {
   return new Date().toISOString().replace(/[:.]/g, '-')
+}
+
+function getRunDirForId(runId) {
+  return \`.tpan-opt-co-worker/runs/\${runId}\`
 }
 
 function projectPath(...segments) {

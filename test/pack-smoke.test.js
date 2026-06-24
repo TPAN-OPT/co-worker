@@ -106,18 +106,31 @@ async function createPackageFixture(options = {}) {
   const includeChineseReadme = options.includeChineseReadme !== false
 
   await mkdir(join(targetDir, 'examples'), { recursive: true })
+  await mkdir(join(targetDir, 'scripts'), { recursive: true })
   await mkdir(join(targetDir, 'src'), { recursive: true })
+  await mkdir(join(targetDir, 'test'), { recursive: true })
   await writeFile(join(targetDir, 'LICENSE'), 'MIT\n')
   await writeFile(join(targetDir, 'README.md'), '# Package Fixture\n')
   await writeFile(join(targetDir, 'examples', 'opt.workflow.json'), '{}\n')
+  await writeFile(join(targetDir, 'scripts', 'check-coverage.mjs'), '#!/usr/bin/env node\n')
+  await writeFile(join(targetDir, 'scripts', 'verify.mjs'), '#!/usr/bin/env node\n')
   await writeFile(join(targetDir, 'src', 'cli.js'), '#!/usr/bin/env node\n')
+  await writeFile(join(targetDir, 'test', 'cli.test.js'), 'import "node:test"\n')
   await writeFile(
     join(targetDir, 'package.json'),
     JSON.stringify(
       {
         name: 'pack-fixture',
         version: '1.0.0',
-        files: ['src', 'examples', 'README.md', 'README.zh-CN.md', 'LICENSE']
+        files: [
+          'src',
+          'scripts',
+          'test',
+          'examples',
+          'README.md',
+          'README.zh-CN.md',
+          'LICENSE'
+        ]
       },
       null,
       2

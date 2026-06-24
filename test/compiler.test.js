@@ -35,6 +35,115 @@ const validWorkflow = {
 }
 
 describe('validateWorkflow', () => {
+  it('rejects malformed workflow boundaries with clear messages', () => {
+    const cases = [
+      [null, /Workflow must be a JSON object/],
+      [{ ...validWorkflow, organization: [] }, /Workflow organization must be an object/],
+      [
+        { ...validWorkflow, organization: {} },
+        /Workflow organization must include a team or policies/
+      ],
+      [{ ...validWorkflow, roles: [] }, /Workflow roles must be a non-empty object/],
+      [{ ...validWorkflow, roles: {} }, /Workflow roles must be a non-empty object/],
+      [{ ...validWorkflow, stages: {} }, /Workflow stages must be a non-empty array/],
+      [{ ...validWorkflow, stages: [] }, /Workflow stages must be a non-empty array/]
+    ]
+
+    for (const [workflow, message] of cases) {
+      assert.throws(() => validateWorkflow(workflow), message)
+    }
+  })
+
+  it('rejects malformed roles, stages, arrays, and gates', () => {
+    const cases = [
+      [
+        { ...validWorkflow, roles: { '1planner': {} } },
+        /Role id "1planner" must use letters/
+      ],
+      [
+        { ...validWorkflow, roles: { planner: null } },
+        /Role "planner" must be an object/
+      ],
+      [
+        { ...validWorkflow, roles: { planner: { skills: 'tdd', permissions: [] } } },
+        /Role "planner" skills must be an array/
+      ],
+      [
+        { ...validWorkflow, roles: { planner: { skills: [''], permissions: [] } } },
+        /Role "planner" skills\[0\] must be a non-empty string/
+      ],
+      [
+        { ...validWorkflow, stages: [null] },
+        /Each workflow stage must be an object/
+      ],
+      [
+        { ...validWorkflow, stages: [{ id: '1bad', owner: 'planner' }] },
+        /Stage id "1bad" must use letters/
+      ],
+      [
+        { ...validWorkflow, stages: [{ id: 'review', owner: '' }] },
+        /Stage "review" owner must be a non-empty string/
+      ],
+      [
+        { ...validWorkflow, stages: [{ id: 'review', owner: 'planner', required: [''] }] },
+        /Stage "review" required\[0\] must be a non-empty string/
+      ],
+      [
+        { ...validWorkflow, stages: [{ id: 'review', owner: 'planner', gates: {} }] },
+        /Stage "review" gates must be an array/
+      ],
+      [
+        { ...validWorkflow, stages: [{ id: 'review', owner: 'planner', gates: [null] }] },
+        /Stage "review" gates\[0\] must be a string or gate object/
+      ],
+      [
+        { ...validWorkflow, stages: [{ id: 'review', owner: 'planner', gates: [''] }] },
+        /Stage "review" gates\[0\] must be a non-empty string/
+      ],
+      [
+        { ...validWorkflow, stages: [{ id: 'review', owner: 'planner', gates: ['bad id'] }] },
+        /Gate "bad id" must use letters/
+      ],
+      [
+        {
+          ...validWorkflow,
+          stages: [{ id: 'review', owner: 'planner', gates: ['done', 'done'] }]
+        },
+        /Duplicate gate id "done"/
+      ],
+      [
+        {
+          ...validWorkflow,
+          stages: [
+            {
+              id: 'review',
+              owner: 'planner',
+              gates: [{ id: 'done', type: 'invalid' }]
+            }
+          ]
+        },
+        /Gate "done" type must be "manual" or "command"/
+      ],
+      [
+        {
+          ...validWorkflow,
+          stages: [
+            {
+              id: 'review',
+              owner: 'planner',
+              gates: [{ id: 'done', preset: 'node:test', type: 'manual' }]
+            }
+          ]
+        },
+        /Gate "done" type must match preset "node:test" type "command"/
+      ]
+    ]
+
+    for (const [workflow, message] of cases) {
+      assert.throws(() => validateWorkflow(workflow), message)
+    }
+  })
+
   it('returns an immutable normalized workflow for valid input', () => {
     const workflow = validateWorkflow(validWorkflow)
 
@@ -522,6 +631,26 @@ describe('compileWorkflow', () => {
     assert.equal(parsedSchema.title, 'TPAN-OPT/CO-WORKER Workflow')
     assert.deepEqual(parsedSchema.required, ['name', 'version', 'roles', 'stages'])
     assert.equal(parsedSchema.properties.organization.required, undefined)
+    assert.deepEqual(parsedSchema.properties.organization.anyOf, [
+      {
+        required: ['team']
+      },
+      {
+        required: ['policies'],
+        properties: {
+          policies: {
+            type: 'array',
+            items: {
+              type: 'string',
+              minLength: 1,
+              description: 'List item.'
+            },
+            default: [],
+            minItems: 1
+          }
+        }
+      }
+    ])
     assert.equal(
       parsedSchema.properties.organization.properties.team.pattern,
       '^[A-Za-z][A-Za-z0-9_-]*$'
@@ -529,6 +658,17 @@ describe('compileWorkflow', () => {
     assert.deepEqual(parsedSchema.properties.organization.properties.policies.default, [])
     assert.deepEqual(parsedSchema.properties.stages.items.required, ['id', 'owner'])
     assert.deepEqual(parsedSchema.$defs.gate.properties.type.enum, ['manual', 'command'])
+    assert.deepEqual(parsedSchema.$defs.gate.oneOf[1].allOf[0].then.anyOf, [
+      {
+        required: ['command']
+      },
+      {
+        required: ['preset']
+      }
+    ])
+    assert.deepEqual(parsedSchema.$defs.gatePreset.allOf[0].then, {
+      required: ['command']
+    })
 
     const prTemplate = outputs.find((output) => output.path === '.github/pull_request_template.md')
     assert.match(prTemplate.content, /coverage_above_80/)

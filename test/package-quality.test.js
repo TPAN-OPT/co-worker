@@ -16,6 +16,8 @@ describe('package quality', () => {
     assert.equal(packageJson.bugs.url, 'https://github.com/TPAN-OPT/co-worker/issues')
     assert.ok(packageJson.keywords.includes('ai-agents'))
     assert.ok(packageJson.files.includes('src'))
+    assert.ok(packageJson.files.includes('scripts'))
+    assert.ok(packageJson.files.includes('test'))
     assert.ok(packageJson.files.includes('README.zh-CN.md'))
     assert.equal(packageJson.scripts.lint, 'node scripts/check-js.mjs')
     assert.equal(packageJson.scripts.typecheck, 'node scripts/check-js.mjs')
@@ -24,6 +26,19 @@ describe('package quality', () => {
     assert.equal(packageJson.scripts['repo:health'], 'node scripts/repo-health.mjs')
     assert.equal(packageJson.scripts['pack:check'], 'node scripts/pack-smoke.mjs')
     assert.equal(packageJson.scripts.verify, 'node scripts/verify.mjs')
+  })
+
+  it('keeps verify aligned with the package quality gates', async () => {
+    const verifyScript = await readFile('scripts/verify.mjs', 'utf8')
+
+    assert.match(verifyScript, /npmCommand, \['run', 'lint'\]/)
+    assert.match(verifyScript, /npmCommand, \['run', 'typecheck'\]/)
+    assert.match(verifyScript, /npmCommand, \['run', 'repo:health'\]/)
+    assert.match(verifyScript, /npmCommand, \['run', 'test:coverage'\]/)
+    assert.match(verifyScript, /npmCommand, \['run', 'build'\]/)
+    assert.match(verifyScript, /npmCommand, \['run', 'pack:check'\]/)
+    assert.match(verifyScript, /npmCommand, \['audit', '--audit-level=high'\]/)
+    assert.match(verifyScript, /\[verify\] all quality gates passed/)
   })
 
   it('runs local quality scripts successfully', async () => {

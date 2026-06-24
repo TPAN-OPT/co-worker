@@ -25,6 +25,8 @@
   },
   "files": [
     "src",
+    "scripts",
+    "test",
     "examples",
     "README.md",
     "README.zh-CN.md",

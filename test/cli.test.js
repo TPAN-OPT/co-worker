@@ -24,6 +24,53 @@ describe('CLI', () => {
     assert.match(stdout, /--policy quality-standard/)
   })
 
+  it('rejects unknown root commands with help', async () => {
+    const productName = ['TPAN', 'OPT/CO-WORKER'].join('-')
+
+    await assert.rejects(async () => {
+      try {
+        await execFileAsync('node', [cliPath, 'unknown-command'])
+      } catch (error) {
+        assert.ok(error.stdout.includes(productName))
+        throw error
+      }
+    })
+  })
+
+  it('prints command help for writable and workflow commands', async () => {
+    const commands = ['init', 'validate', 'schema', 'compile']
+
+    for (const command of commands) {
+      const { stdout } = await execFileAsync('node', [cliPath, command, '--help'])
+
+      assert.match(stdout, new RegExp(`tpan-opt-co-worker ${command}`))
+      assert.match(stdout, /Options:/)
+    }
+  })
+
+  it('rejects unknown and incomplete workflow command options', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'compile', '--workflow']),
+      /--workflow requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'compile', '--bogus']),
+      /Unknown compile option "--bogus"/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'validate', '--preset-file']),
+      /--preset-file requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'schema', '--out']),
+      /--out requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'init', '--policy']),
+      /--policy requires a value/
+    )
+  })
+
   it('prints the workflow JSON Schema', async () => {
     const { stdout } = await execFileAsync('node', [cliPath, 'schema'])
     const schema = JSON.parse(stdout)

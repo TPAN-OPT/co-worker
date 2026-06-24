@@ -10,6 +10,40 @@ const execFileAsync = promisify(execFile)
 const cliPath = resolve('src/cli.js')
 
 describe('catalog CLI', () => {
+  it('prints help for catalog-style commands', async () => {
+    const commands = ['catalog', 'presets', 'templates', 'policies', 'teams', 'marketplace']
+
+    for (const command of commands) {
+      const { stdout } = await execFileAsync('node', [cliPath, command, '--help'])
+
+      assert.match(stdout, new RegExp(`tpan-opt-co-worker ${command}`))
+      assert.match(stdout, /--json/)
+      if (command === 'marketplace') {
+        assert.match(stdout, /--out marketplace\.json/)
+        assert.doesNotMatch(stdout, /--out catalog\.json/)
+      }
+    }
+  })
+
+  it('rejects unknown and incomplete catalog-style options', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'catalog', '--bogus']),
+      /Unknown catalog option "--bogus"/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'catalog', '--out']),
+      /--out requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'marketplace', '--out']),
+      /--out requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'teams', '--bogus']),
+      /Unknown teams option "--bogus"/
+    )
+  })
+
   it('lists built-in gate presets as text', async () => {
     const { stdout } = await execFileAsync('node', [cliPath, 'presets'])
 
