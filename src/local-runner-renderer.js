@@ -2,9 +2,11 @@ export function renderLocalRunnerScript() {
   return `#!/usr/bin/env node
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const MANIFEST_PATH = '.tpan-opt-co-worker/workflow.manifest.json'
 const RUNS_ROOT = '.tpan-opt-co-worker/runs'
 const RUN_INDEX_PATH = '.tpan-opt-co-worker/runs/index.json'
@@ -29,7 +31,7 @@ console.log(\`Workflow: \${manifest.workflow.name}@\${manifest.workflow.version}
 console.log(\`Run directory: \${runDir}\`)
 
 const result = spawnSync(process.execPath, args, {
-  cwd: process.cwd(),
+  cwd: PROJECT_ROOT,
   stdio: 'inherit'
 })
 
@@ -91,7 +93,7 @@ function requireNextValue(args, index, label) {
 }
 
 function readManifest() {
-  const rawContent = readFileSync(resolve(MANIFEST_PATH), 'utf8')
+  const rawContent = readFileSync(projectPath(MANIFEST_PATH), 'utf8')
   const parsed = JSON.parse(rawContent)
 
   if (!parsed.workflow || !parsed.workflow.name || !parsed.workflow.version) {
@@ -108,7 +110,7 @@ function validateRunId(runId) {
 }
 
 function readEvidenceReport(runDir) {
-  const evidencePath = resolve(runDir, 'evidence.json')
+  const evidencePath = projectPath(runDir, 'evidence.json')
   if (!existsSync(evidencePath)) {
     return null
   }
@@ -117,7 +119,7 @@ function readEvidenceReport(runDir) {
 }
 
 function updateRunIndex({ manifest, runId, runDir, exitCode, report }) {
-  mkdirSync(resolve(RUNS_ROOT), { recursive: true })
+  mkdirSync(projectPath(RUNS_ROOT), { recursive: true })
   const existingIndex = readRunIndex()
   const runRecord = {
     id: runId,
@@ -134,16 +136,16 @@ function updateRunIndex({ manifest, runId, runDir, exitCode, report }) {
   ]
 
   const nextIndex = { runs }
-  writeFileSync(resolve(RUN_INDEX_PATH), \`\${JSON.stringify(nextIndex, null, 2)}\\n\`, 'utf8')
+  writeFileSync(projectPath(RUN_INDEX_PATH), \`\${JSON.stringify(nextIndex, null, 2)}\\n\`, 'utf8')
   syncConsoleRuns(nextIndex)
 }
 
 function syncConsoleRuns(index) {
-  mkdirSync(resolve('.tpan-opt-co-worker/console'), { recursive: true })
+  mkdirSync(projectPath('.tpan-opt-co-worker/console'), { recursive: true })
   const content = JSON.stringify(createConsoleRunsData(index), null, 2)
-  writeFileSync(resolve(CONSOLE_RUNS_PATH), \`\${content}\\n\`, 'utf8')
+  writeFileSync(projectPath(CONSOLE_RUNS_PATH), \`\${content}\\n\`, 'utf8')
   writeFileSync(
-    resolve(CONSOLE_RUNS_SCRIPT_PATH),
+    projectPath(CONSOLE_RUNS_SCRIPT_PATH),
     \`window.TPAN_OPT_RUNS = \${content}\\n\`,
     'utf8'
   )
@@ -167,7 +169,7 @@ function readRunDetails(run) {
 }
 
 function readRunIndex() {
-  const indexPath = resolve(RUN_INDEX_PATH)
+  const indexPath = projectPath(RUN_INDEX_PATH)
   if (!existsSync(indexPath)) {
     return {
       runs: []
@@ -196,6 +198,10 @@ function getRunStatus(exitCode, report) {
 
 function createDefaultRunId() {
   return new Date().toISOString().replace(/[:.]/g, '-')
+}
+
+function projectPath(...segments) {
+  return resolve(PROJECT_ROOT, ...segments)
 }
 
 function printHelp() {

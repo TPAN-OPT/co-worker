@@ -566,6 +566,10 @@ Options:
   --policy <id>     Organization policy pack id. Can be repeated.
   --name <id>       Workflow name. Defaults to production-feature-workflow.
   --force           Overwrite an existing opt.workflow.json.
+
+Notes:
+  The default production-feature template uses npm test and npm run test:coverage gates.
+  Target repositories should provide those package.json scripts or override the gate presets.
 `)
 }
 
@@ -602,6 +606,10 @@ Options:
   --out <dir>        Output repository directory. Defaults to current directory.
   --force            Overwrite existing generated files.
   --dry-run          Print planned outputs without writing files.
+
+Notes:
+  npm-based gates require package.json scripts in the generated target repository.
+  Use --preset-file or workflow-defined gatePresets to adapt gates for non-Node projects.
 `)
 }
 

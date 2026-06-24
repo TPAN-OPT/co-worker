@@ -2,8 +2,10 @@ export function renderRunListScript() {
   return `#!/usr/bin/env node
 
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INDEX_PATH = '.tpan-opt-co-worker/runs/index.json'
 const options = parseArgs(process.argv.slice(2))
 const index = readRunIndex()
@@ -50,7 +52,7 @@ function parseArgs(args) {
 }
 
 function readRunIndex() {
-  const indexPath = resolve(INDEX_PATH)
+  const indexPath = projectPath(INDEX_PATH)
   if (!existsSync(indexPath)) {
     return {
       runs: []
@@ -63,6 +65,10 @@ function readRunIndex() {
   }
 
   return parsed
+}
+
+function projectPath(...segments) {
+  return resolve(PROJECT_ROOT, ...segments)
 }
 
 function printHelp() {

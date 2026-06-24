@@ -109,6 +109,66 @@ describe('generated local runner script', () => {
     }
   })
 
+  it('runs from outside the generated project directory', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-runner-'))
+    const outsideDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-outside-'))
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(localRunnerWorkflow()), targetDir, {
+        force: true
+      })
+      const manualEvidencePath = join(targetDir, 'manual-evidence.json')
+      await writeFile(
+        manualEvidencePath,
+        JSON.stringify({
+          gates: {
+            human_approval: {
+              approvedBy: 'owner@example.com',
+              note: 'Approved from an external cwd.',
+              links: []
+            }
+          }
+        })
+      )
+
+      await execFileAsync(
+        'node',
+        [
+          join(targetDir, 'scripts', 'run-workflow.mjs'),
+          '--run-id',
+          'external-cwd-run',
+          '--manual-evidence',
+          manualEvidencePath
+        ],
+        { cwd: outsideDir }
+      )
+
+      const report = JSON.parse(
+        await readFile(
+          join(targetDir, '.tpan-opt-co-worker', 'runs', 'external-cwd-run', 'evidence.json'),
+          'utf8'
+        )
+      )
+      const index = JSON.parse(
+        await readFile(join(targetDir, '.tpan-opt-co-worker', 'runs', 'index.json'), 'utf8')
+      )
+      const listResult = await execFileAsync(
+        'node',
+        [join(targetDir, 'scripts', 'list-runs.mjs'), '--json'],
+        { cwd: outsideDir }
+      )
+      const listedRuns = JSON.parse(listResult.stdout)
+
+      assert.equal(report.allGatesPassed, true)
+      assert.equal(index.runs[0].id, 'external-cwd-run')
+      assert.equal(index.runs[0].status, 'passed')
+      assert.equal(listedRuns.runs[0].id, 'external-cwd-run')
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+      await rm(outsideDir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects unsafe run ids before invoking verification', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-runner-'))
 

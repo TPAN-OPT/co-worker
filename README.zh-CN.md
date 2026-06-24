@@ -433,6 +433,8 @@ tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file g
 
 `init` 会从指定 workflow template 写出 starter `opt.workflow.json`。默认 `production-feature` 模板内置 planner、engineer、reviewer、release-manager 四类角色和一套生产交付流程。传入 `--team <id>` 后，会使用该可复用 team 推荐的模板，除非同时显式传入 `--template`，并在生成的 workflow 中记录 `organization.team` 和推荐 policy ids。传入 `--policy <id>` 会追加经过校验的组织级 policy packs；重复 policy 会按出现顺序去重。它默认拒绝覆盖已有 workflow；需要覆盖时必须显式传入 `--force`。
 
+默认 `production-feature` 模板使用内置 `node:test` 和 `node:coverage` presets，因此生成后的本地运行会要求目标仓库提供 `npm test` 和 `npm run test:coverage`。如果目标是非 Node 项目或空 starter 目录，请用 workflow 内的 `gatePresets` 或 `--preset-file` 覆盖这些 gates。
+
 `validate` 会检查 workflow 结构、stage owner、gate preset、重复 id 和外部 preset registry，但不会写出任何生成资产。传入 `--json` 后会输出机器可读摘要，包括 workflow 标识、角色/阶段/gate 数量、gate 类型数量、角色列表和阶段 gate id。
 
 `schema` 默认把 workflow JSON Schema 输出到 stdout；传入 `--out` 后会写入文件，并复用生成资产的覆盖保护逻辑。
