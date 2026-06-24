@@ -10,9 +10,18 @@ if (isMainModule()) {
 }
 
 function runCoverageCheck() {
-  const result = spawnSync(process.execPath, ['--test', '--experimental-test-coverage'], {
-    encoding: 'utf8'
-  })
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--test',
+      '--experimental-test-coverage',
+      '--test-coverage-include=src/**',
+      '--test-coverage-include=scripts/**'
+    ],
+    {
+      encoding: 'utf8'
+    }
+  )
 
   const output = `${result.stdout || ''}${result.stderr || ''}`
   process.stdout.write(result.stdout || '')
@@ -34,7 +43,7 @@ function runCoverageCheck() {
   }
 
   console.log(
-    `Coverage threshold passed: lines ${coverage.lines}%, branches ${coverage.branches}%, functions ${coverage.functions}%.`
+    `Product coverage threshold passed: lines ${coverage.lines}%, branches ${coverage.branches}%, functions ${coverage.functions}%.`
   )
 }
 

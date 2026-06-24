@@ -14,6 +14,7 @@ import { renderLocalRunnerScript } from './local-runner-renderer.js'
 import { renderWorkflowManifest } from './manifest-renderer.js'
 import { renderRunListScript } from './run-list-renderer.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
+import { renderVerifyScript } from './verify-renderer.js'
 import {
   renderOpenCodeAgentMarkdown,
   renderOpenCodeConfig
@@ -25,12 +26,18 @@ import {
 import { renderWebConsole } from './web-console-renderer.js'
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_-]*$/i
+const WORKFLOW_FIELDS = ['name', 'version', 'organization', 'gatePresets', 'roles', 'stages']
+const ORGANIZATION_FIELDS = ['team', 'policies']
+const ROLE_FIELDS = ['description', 'skills', 'permissions']
+const STAGE_FIELDS = ['id', 'owner', 'output', 'required', 'gates']
+const GATE_FIELDS = ['id', 'type', 'preset', 'description', 'command']
 
 export function validateWorkflow(input) {
   if (!isPlainObject(input)) {
     throw new Error('Workflow must be a JSON object')
   }
 
+  assertKnownFields(input, WORKFLOW_FIELDS, 'Workflow')
   const name = requireNonEmptyString(input.name, 'Workflow name')
   const version = requireNonEmptyString(input.version, 'Workflow version')
   const organization = normalizeOrganization(input.organization)
@@ -58,6 +65,7 @@ function normalizeOrganization(organization) {
     throw new Error('Workflow organization must be an object')
   }
 
+  assertKnownFields(organization, ORGANIZATION_FIELDS, 'Workflow organization')
   const hasTeam = organization.team !== undefined
   const team = hasTeam
     ? requireNonEmptyString(organization.team, 'Workflow organization team')
@@ -185,6 +193,7 @@ function normalizeRoles(roles) {
         throw new Error(`Role "${roleId}" must be an object`)
       }
 
+      assertKnownFields(role, ROLE_FIELDS, `Role "${roleId}"`)
       return [
         roleId,
         {
@@ -213,6 +222,7 @@ function normalizeStages(stages, roles, gatePresetRegistry) {
 
     const id = requireNonEmptyString(stage.id, 'Stage id')
     validateIdentifier(id, `Stage id "${id}"`)
+    assertKnownFields(stage, STAGE_FIELDS, `Stage "${id}"`)
 
     if (seenStageIds.has(id)) {
       throw new Error(`Duplicate stage id "${id}"`)
@@ -360,265 +370,6 @@ ${gateItems || '- [ ] No workflow gates configured.'}
 `
 }
 
-function renderVerifyScript(workflow) {
-  const commandGates = workflow.stages.flatMap((stage) =>
-    stage.gates
-      .filter((gate) => gate.type === 'command')
-      .map((gate) => ({
-        stageId: stage.id,
-        id: gate.id,
-        preset: gate.preset || '',
-        command: gate.command,
-        description: gate.description
-      }))
-  )
-  const manualGates = workflow.stages.flatMap((stage) =>
-    stage.gates
-      .filter((gate) => gate.type === 'manual')
-      .map((gate) => ({
-        stageId: stage.id,
-        id: gate.id,
-        preset: gate.preset || '',
-        description: gate.description
-      }))
-  )
-
-  return `#!/usr/bin/env node
-
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
-
-const workflow = {
-  name: ${JSON.stringify(workflow.name)},
-  version: ${JSON.stringify(workflow.version)}
-}
-
-const commandGates = ${JSON.stringify(commandGates, null, 2)}
-const manualGates = ${JSON.stringify(manualGates, null, 2)}
-const options = parseArgs(process.argv.slice(2))
-const startedAt = new Date().toISOString()
-const commandGateResults = []
-const manualEvidence = options.manualEvidencePath
-  ? readManualEvidence(options.manualEvidencePath)
-  : { gates: {} }
-
-console.log(\`TPAN-OPT/CO-WORKER workflow: \${workflow.name}@\${workflow.version}\`)
-
-for (const gate of commandGates) {
-  console.log(\`command:\${gate.id} [\${gate.stageId}] \${gate.command}\`)
-  const result = spawnSync(gate.command, {
-    shell: true,
-    stdio: 'inherit'
-  })
-
-  if (result.error) {
-    console.error(\`Command gate failed: \${gate.id}\`)
-    console.error(result.error.message)
-    commandGateResults.push({
-      ...gate,
-      status: 'failed',
-      exitCode: 1,
-      error: result.error.message
-    })
-    process.exitCode = 1
-    continue
-  }
-
-  if (result.status !== 0) {
-    console.error(\`Command gate failed: \${gate.id}\`)
-    commandGateResults.push({
-      ...gate,
-      status: 'failed',
-      exitCode: result.status || 1
-    })
-    process.exitCode = result.status || 1
-    continue
-  }
-
-  commandGateResults.push({
-    ...gate,
-    status: 'passed',
-    exitCode: 0
-  })
-  console.log(\`PASS command:\${gate.id}\`)
-}
-
-const manualGateResults = manualGates.map((gate) => {
-  const evidence = manualEvidence.gates[gate.id]
-  if (!evidence) {
-    return {
-      ...gate,
-      status: 'pending'
-    }
-  }
-
-  return {
-    ...gate,
-    status: 'passed',
-    evidence
-  }
-})
-
-for (const gate of manualGates) {
-  const suffix = gate.description ? \` - \${gate.description}\` : ''
-  console.log(\`manual:\${gate.id} [\${gate.stageId}]\${suffix}\`)
-}
-
-if (manualGates.length > 0) {
-  console.log('Attach manual approval or evidence for every listed manual gate before release.')
-}
-
-const report = buildReport({
-  workflow,
-  startedAt,
-  commandGateResults,
-  manualGateResults
-})
-
-if (options.runDir) {
-  writeRunArtifacts(options.runDir, report)
-  console.log(\`Wrote run artifacts: \${options.runDir}\`)
-}
-
-if (options.reportPath) {
-  writeJsonFile(options.reportPath, report)
-  console.log(\`Wrote evidence report: \${options.reportPath}\`)
-}
-
-function parseArgs(args) {
-  const parsed = {
-    reportPath: '',
-    manualEvidencePath: '',
-    runDir: ''
-  }
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]
-
-    if (arg === '--report') {
-      const value = args[index + 1]
-      if (!value || value.startsWith('--')) {
-        throw new Error('--report requires a path')
-      }
-      parsed.reportPath = resolve(value)
-      index += 1
-      continue
-    }
-
-    if (arg === '--manual-evidence') {
-      const value = args[index + 1]
-      if (!value || value.startsWith('--')) {
-        throw new Error('--manual-evidence requires a path')
-      }
-      parsed.manualEvidencePath = resolve(value)
-      index += 1
-      continue
-    }
-
-    if (arg === '--run-dir') {
-      const value = args[index + 1]
-      if (!value || value.startsWith('--')) {
-        throw new Error('--run-dir requires a path')
-      }
-      parsed.runDir = resolve(value)
-      index += 1
-      continue
-    }
-
-    if (arg === '--help' || arg === '-h') {
-      printHelp()
-      process.exit(0)
-    }
-
-    throw new Error(\`Unknown option "\${arg}"\`)
-  }
-
-  return parsed
-}
-
-function buildReport({ workflow, startedAt, commandGateResults, manualGateResults }) {
-  const commandPassed = commandGateResults.every((gate) => gate.status === 'passed')
-  const allGatesPassed =
-    commandPassed && manualGateResults.every((gate) => gate.status === 'passed')
-
-  return {
-    workflow,
-    passed: commandPassed,
-    commandPassed,
-    allGatesPassed,
-    startedAt,
-    finishedAt: new Date().toISOString(),
-    commandGates: commandGateResults,
-    manualGates: manualGateResults
-  }
-}
-
-function writeRunArtifacts(runDir, report) {
-  mkdirSync(runDir, { recursive: true })
-  writeJsonFile(resolve(runDir, 'evidence.json'), report)
-  writeFileSync(resolve(runDir, 'summary.md'), renderSummary(report), 'utf8')
-}
-
-function writeJsonFile(path, value) {
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, \`\${JSON.stringify(value, null, 2)}\\n\`, 'utf8')
-}
-
-function renderSummary(report) {
-  const commandRows = report.commandGates
-    .map((gate) => \`| \${gate.stageId} | \${gate.id} | \${gate.status} | \${gate.exitCode} |\`)
-    .join('\\n')
-  const manualRows = report.manualGates
-    .map((gate) => \`| \${gate.stageId} | \${gate.id} | \${gate.status} |\`)
-    .join('\\n')
-
-  return \`# TPAN-OPT/CO-WORKER Evidence Summary
-
-- Workflow: \${report.workflow.name}@\${report.workflow.version}
-- commandPassed: \${report.commandPassed}
-- allGatesPassed: \${report.allGatesPassed}
-- startedAt: \${report.startedAt}
-- finishedAt: \${report.finishedAt}
-
-## Command Gates
-
-| Stage | Gate | Status | Exit Code |
-| --- | --- | --- | --- |
-\${commandRows || '| - | - | none | - |'}
-
-## Manual Gates
-
-| Stage | Gate | Status |
-| --- | --- | --- |
-\${manualRows || '| - | - | none |'}
-\`
-}
-
-function readManualEvidence(manualEvidencePath) {
-  const rawContent = readFileSync(manualEvidencePath, 'utf8')
-  const parsed = JSON.parse(rawContent)
-
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('--manual-evidence must point to a JSON object')
-  }
-
-  const gates = parsed.gates
-  if (!gates || typeof gates !== 'object' || Array.isArray(gates)) {
-    throw new Error('--manual-evidence JSON must include a gates object')
-  }
-
-  return {
-    gates
-  }
-}
-
-function printHelp() {
-  console.log('Usage: node scripts/verify-workflow.mjs [--manual-evidence manual-evidence.json] [--report evidence.json] [--run-dir .tpan-opt-co-worker/runs/<id>]')
-}
-`
-}
-
 function normalizeGates(value, label, gatePresetRegistry, options = {}) {
   if (value === undefined && options.optional) {
     return []
@@ -657,6 +408,7 @@ function normalizeGate(gate, label, gatePresetRegistry) {
     throw new Error(`${label} must be a string or gate object`)
   }
 
+  assertKnownFields(gate, GATE_FIELDS, label)
   const id = requireNonEmptyString(gate.id, `${label} id`)
   validateIdentifier(id, `Gate "${id}"`)
   const presetId =
@@ -766,6 +518,14 @@ function tomlString(value) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function assertKnownFields(value, allowedFields, label) {
+  for (const field of Object.keys(value)) {
+    if (!allowedFields.includes(field)) {
+      throw new Error(`${label} contains unknown field "${field}"`)
+    }
+  }
 }
 
 function deepFreeze(value) {

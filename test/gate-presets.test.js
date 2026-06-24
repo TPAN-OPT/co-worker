@@ -41,6 +41,10 @@ describe('gate preset registry', () => {
       [{ 'node:test': { type: 'manual' } }, /conflicts with a built-in preset/],
       [{ 'team:bad': null }, /Custom gate preset "team:bad" must be an object/],
       [
+        { 'team:bad': { type: 'manual', owner: 'lead' } },
+        /Custom gate preset "team:bad" contains unknown field "owner"/
+      ],
+      [
         { 'team:bad': { type: 'invalid' } },
         /Custom gate preset "team:bad" type must be "manual" or "command"/
       ],

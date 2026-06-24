@@ -561,7 +561,7 @@ function printInitHelp() {
 
 Options:
   --out <dir>       Output repository directory. Defaults to current directory.
-  --template <id>   Workflow template id. Defaults to production-feature.
+  --template <id>   Workflow template id. Defaults to production-feature. Use minimal for language-neutral manual gates.
   --team <id>       Reusable agent team id. Uses the team's recommended template unless --template is set.
   --policy <id>     Organization policy pack id. Can be repeated.
   --name <id>       Workflow name. Defaults to production-feature-workflow.

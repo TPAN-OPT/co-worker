@@ -104,6 +104,67 @@ describe('init CLI', () => {
     }
   })
 
+  it('initializes a language-neutral minimal workflow template', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+    const manualEvidencePath = join(targetDir, 'manual-evidence.json')
+    const reportPath = join(targetDir, 'minimal-report.json')
+
+    try {
+      const { stdout } = await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        targetDir,
+        '--template',
+        'minimal',
+        '--name',
+        'minimal-workflow'
+      ])
+
+      assert.match(stdout, /minimal/)
+      const workflow = JSON.parse(await readFile(workflowPath, 'utf8'))
+      assert.equal(workflow.name, 'minimal-workflow')
+      assert.deepEqual(Object.keys(workflow.roles), ['lead'])
+      assert.equal(workflow.stages[0].id, 'plan')
+      assert.equal(
+        workflow.stages.flatMap((stage) => stage.gates).every((gate) => gate.type === 'manual'),
+        true
+      )
+
+      await execFileAsync('node', [
+        cliPath,
+        'compile',
+        '--workflow',
+        workflowPath,
+        '--out',
+        targetDir
+      ])
+      await writeFile(
+        manualEvidencePath,
+        JSON.stringify({
+          gates: {
+            scope_confirmed: { approvedBy: 'lead@example.com' },
+            local_checks_recorded: { approvedBy: 'lead@example.com' },
+            human_approval: { approvedBy: 'lead@example.com' }
+          }
+        })
+      )
+      await execFileAsync('node', [
+        join(targetDir, 'scripts', 'verify-workflow.mjs'),
+        '--manual-evidence',
+        manualEvidencePath,
+        '--report',
+        reportPath
+      ])
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.allGatesPassed, true)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('initializes a workflow from a reusable team recommendation', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
     const workflowPath = join(targetDir, 'opt.workflow.json')

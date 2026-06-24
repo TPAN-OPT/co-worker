@@ -517,7 +517,8 @@ export function renderWebConsole(workflow) {
       if (!container) return
       const filteredRuns = filterRunsByStatus(runs, activeRunStatusFilter)
       if (filteredRuns.length === 0) {
-        container.textContent = 'No workflow runs recorded yet.'
+        container.className = 'muted'
+        container.textContent = getEmptyRunHistoryMessage(runs.length)
         return
       }
       container.className = ''
@@ -527,6 +528,18 @@ export function renderWebConsole(workflow) {
     function filterRunsByStatus(runs, status) {
       if (status === 'all') return runs
       return runs.filter((run) => normalizeStatus(run.status) === status)
+    }
+
+    function getEmptyRunHistoryMessage(totalRuns) {
+      return totalRuns === 0
+        ? 'No workflow runs recorded yet.'
+        : 'No runs match the selected status filter.'
+    }
+
+    function getEmptyGateDetailsMessage(totalRuns, filteredRunCount) {
+      if (totalRuns === 0) return 'Run a workflow to inspect command and manual gate results.'
+      if (filteredRunCount === 0) return 'No gate details match the selected status filter.'
+      return 'No gate details recorded for the selected runs.'
     }
 
     function renderGateDetails(runs, details) {
@@ -539,7 +552,7 @@ export function renderWebConsole(workflow) {
 
       if (runDetails.length === 0) {
         container.className = 'muted'
-        container.textContent = 'Run a workflow to inspect command and manual gate results.'
+        container.textContent = getEmptyGateDetailsMessage(runs.length, filteredRuns.length)
         return
       }
 
@@ -632,17 +645,13 @@ export function renderWebConsole(workflow) {
     }
 
     function getRunArtifactBaseHref(run) {
-      const runDir = String(run.runDir || '')
-      const prefix = '.tpan-opt-co-worker/runs/'
-      if (!runDir.startsWith(prefix)) return ''
-      const relativeRunDir = runDir
-        .slice(prefix.length)
-        .split('/')
-        .filter(Boolean)
-        .map((segment) => encodeURIComponent(segment))
-        .join('/')
+      const runId = String(run.id || '')
+      if (!isSafeRunId(runId)) return ''
+      return '../runs/' + encodeURIComponent(runId)
+    }
 
-      return relativeRunDir ? '../runs/' + relativeRunDir : ''
+    function isSafeRunId(runId) {
+      return /^[a-zA-Z0-9._-]+$/.test(runId) && runId !== '.' && runId !== '..'
     }
 
     function normalizeStatus(status) {

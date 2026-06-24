@@ -19,14 +19,25 @@ const cleanNodeEnv = {
 describe('check-coverage script', () => {
   it('passes when Node coverage summary meets every threshold', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-coverage-'))
+    const sourceDir = join(targetDir, 'src')
 
     try {
+      await mkdir(sourceDir)
+      await writeFile(
+        join(sourceDir, 'math.js'),
+        [
+          'export function add(left, right) {',
+          '  return left + right',
+          '}'
+        ].join('\n')
+      )
       await writeFile(
         join(targetDir, 'covered.test.js'),
         [
           "import { test } from 'node:test'",
           "import assert from 'node:assert/strict'",
-          "test('covered', () => assert.equal(1 + 1, 2))"
+          "import { add } from './src/math.js'",
+          "test('covered', () => assert.equal(add(1, 1), 2))"
         ].join('\n')
       )
 
@@ -35,7 +46,7 @@ describe('check-coverage script', () => {
         env: cleanNodeEnv
       })
 
-      assert.match(stdout, /Coverage threshold passed/)
+      assert.match(stdout, /Product coverage threshold passed/)
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
@@ -67,7 +78,7 @@ describe('check-coverage script', () => {
     }
   })
 
-  it('fails when coverage is below the threshold', async () => {
+  it('fails when product code coverage is below the threshold', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-coverage-'))
     const sourceDir = join(targetDir, 'src')
 

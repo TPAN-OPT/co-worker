@@ -43,6 +43,11 @@ describe('validateWorkflow', () => {
         { ...validWorkflow, organization: {} },
         /Workflow organization must include a team or policies/
       ],
+      [{ ...validWorkflow, artifacts: [] }, /Workflow contains unknown field "artifacts"/],
+      [
+        { ...validWorkflow, organization: { team: 'core', approvals: [] } },
+        /Workflow organization contains unknown field "approvals"/
+      ],
       [{ ...validWorkflow, roles: [] }, /Workflow roles must be a non-empty object/],
       [{ ...validWorkflow, roles: {} }, /Workflow roles must be a non-empty object/],
       [{ ...validWorkflow, stages: {} }, /Workflow stages must be a non-empty array/],
@@ -63,6 +68,10 @@ describe('validateWorkflow', () => {
       [
         { ...validWorkflow, roles: { planner: null } },
         /Role "planner" must be an object/
+      ],
+      [
+        { ...validWorkflow, roles: { planner: { skills: [], permissions: [], tools: [] } } },
+        /Role "planner" contains unknown field "tools"/
       ],
       [
         { ...validWorkflow, roles: { planner: { skills: 'tdd', permissions: [] } } },
@@ -89,6 +98,13 @@ describe('validateWorkflow', () => {
         /Stage "review" required\[0\] must be a non-empty string/
       ],
       [
+        {
+          ...validWorkflow,
+          stages: [{ id: 'review', owner: 'planner', artifacts: [] }]
+        },
+        /Stage "review" contains unknown field "artifacts"/
+      ],
+      [
         { ...validWorkflow, stages: [{ id: 'review', owner: 'planner', gates: {} }] },
         /Stage "review" gates must be an array/
       ],
@@ -110,6 +126,19 @@ describe('validateWorkflow', () => {
           stages: [{ id: 'review', owner: 'planner', gates: ['done', 'done'] }]
         },
         /Duplicate gate id "done"/
+      ],
+      [
+        {
+          ...validWorkflow,
+          stages: [
+            {
+              id: 'review',
+              owner: 'planner',
+              gates: [{ id: 'done', type: 'manual', approver: 'lead' }]
+            }
+          ]
+        },
+        /Stage "review" gates\[0\] contains unknown field "approver"/
       ],
       [
         {
@@ -591,6 +620,7 @@ describe('compileWorkflow', () => {
     assert.match(webConsole.content, /run-summary/)
     assert.match(webConsole.content, /renderRunSummary/)
     assert.match(webConsole.content, /Run History/)
+    assert.match(webConsole.content, /No runs match the selected status filter/)
     assert.match(webConsole.content, /data-status-filter/)
     assert.match(webConsole.content, /setRunStatusFilter/)
     assert.match(webConsole.content, /active-filter/)

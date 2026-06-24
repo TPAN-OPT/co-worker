@@ -74,6 +74,7 @@ describe('catalog CLI', () => {
 
     assert.match(stdout, /Workflow templates/)
     assert.match(stdout, /production-feature/)
+    assert.match(stdout, /minimal/)
     assert.match(stdout, /Planner, engineer, reviewer, and release manager/)
   })
 
@@ -88,6 +89,13 @@ describe('catalog CLI', () => {
         description:
           'Planner, engineer, reviewer, and release manager workflow for verified product delivery.',
         defaultWorkflowName: 'production-feature-workflow'
+      },
+      {
+        id: 'minimal',
+        name: 'Minimal Evidence Workflow',
+        description:
+          'Language-neutral starter workflow with manual planning, verification, and approval gates.',
+        defaultWorkflowName: 'minimal-evidence-workflow'
       }
     ])
   })
@@ -187,7 +195,7 @@ describe('catalog CLI', () => {
 
     assert.ok(stdout.includes('TPAN-OPT/CO-WORKER catalog'))
     assert.match(stdout, /Presets: 5/)
-    assert.match(stdout, /Templates: 1/)
+    assert.match(stdout, /Templates: 2/)
     assert.match(stdout, /Policies: 3/)
     assert.match(stdout, /Teams: 3/)
     assert.match(stdout, /Marketplace: 5/)

@@ -186,6 +186,15 @@ describe('generated local runner script', () => {
           ),
         /--run-id may only contain/
       )
+      await assert.rejects(
+        () =>
+          execFileAsync(
+            'node',
+            [join(targetDir, 'scripts', 'run-workflow.mjs'), '--run-id', '..'],
+            { cwd: targetDir }
+          ),
+        /--run-id may not be "\." or "\.\."/
+      )
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }

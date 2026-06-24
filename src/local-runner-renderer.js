@@ -107,6 +107,10 @@ function validateRunId(runId) {
   if (!RUN_ID_PATTERN.test(runId)) {
     throw new Error('--run-id may only contain letters, numbers, dots, underscores, and hyphens')
   }
+
+  if (runId === '.' || runId === '..') {
+    throw new Error('--run-id may not be "." or ".."')
+  }
 }
 
 function readEvidenceReport(runDir) {
@@ -193,6 +197,10 @@ function normalizeRunRecord(run) {
 
   if (typeof run.id !== 'string' || !RUN_ID_PATTERN.test(run.id)) {
     throw new Error(\`\${RUN_INDEX_PATH} run ids may only contain letters, numbers, dots, underscores, and hyphens\`)
+  }
+
+  if (run.id === '.' || run.id === '..') {
+    throw new Error(\`\${RUN_INDEX_PATH} run ids may not be "." or ".."\`)
   }
 
   return {

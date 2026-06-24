@@ -18,6 +18,12 @@ AI coding tools make individuals faster, but many teams still run into the same 
 
 TPAN-OPT/CO-WORKER turns a team's operating method into a versioned, executable workflow.
 
+## Current Implementation Scope
+
+The current package is a no-dependency Node.js workflow compiler, local verifier, local runner, and static workflow console. It validates JSON workflow definitions, generates repository-local harness assets, runs staged verification gates, records evidence, and syncs local run history into the generated console.
+
+The broader team operating system language in this README describes the product direction. Runtime scheduling beyond the generated local runner, marketplace package installation, YAML authoring, and hosted orchestration are not part of the current package yet.
+
 ## What TPAN-OPT/CO-WORKER Provides
 
 - **Workflow Designer**: define standard delivery workflows with stages, roles, gates, artifacts, and approvals.
@@ -105,6 +111,15 @@ node src/cli.js init \
   --out /path/to/target-repo \
   --template production-feature \
   --name production-feature-workflow
+```
+
+Create a language-neutral starter workflow that does not assume npm scripts:
+
+```bash
+node src/cli.js init \
+  --out /path/to/target-repo \
+  --template minimal \
+  --name minimal-evidence-workflow
 ```
 
 Validate a workflow before generating repository assets:
@@ -408,9 +423,9 @@ npm audit --audit-level=high
 ```
 
 - `verify` runs the complete local quality gate used before release.
-- `lint` and `typecheck` syntax-check all JavaScript and MJS files with the active Node runtime.
+- `lint` and `typecheck` syntax-check all JavaScript and MJS files with the active Node runtime; `typecheck` is kept as a compatibility gate name for generated npm workflows in this plain JavaScript package.
 - `repo:health` checks unresolved conflict markers, focused/skipped tests, naming drift, and source file size.
-- `test:coverage` runs the full Node test suite and enforces 80%+ line, branch, and function coverage.
+- `test:coverage` runs the full Node test suite and enforces 80%+ line, branch, and function coverage for product code under `src/**` and `scripts/**`.
 - `build` compiles the example workflow into a temporary repository and verifies generated assets can be written.
 - `pack:check` runs an npm package dry run with an isolated cache and verifies required release files.
 - `npm audit --audit-level=high` verifies dependency security posture; the package currently has no runtime dependencies.
@@ -433,7 +448,7 @@ tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file g
 
 `init` writes a starter `opt.workflow.json` from a named workflow template. The default `production-feature` template includes planner, engineer, reviewer, and release-manager roles plus a production delivery flow. Passing `--team <id>` uses the reusable team's recommended template unless `--template` is also set, and records `organization.team` plus recommended policy ids in the generated workflow. Passing `--policy <id>` appends validated organization policy packs; repeated policies are deduplicated while preserving order. It refuses to overwrite an existing workflow unless `--force` is provided.
 
-The default `production-feature` template uses the built-in `node:test` and `node:coverage` presets, so generated local runs expect the target repository to provide `npm test` and `npm run test:coverage`. For non-Node projects or empty starter directories, override those gates with workflow-defined `gatePresets` or `--preset-file`.
+The default `production-feature` template uses the built-in `node:test` and `node:coverage` presets, so generated local runs expect the target repository to provide `npm test` and `npm run test:coverage`. For non-Node projects or empty starter directories, start with `--template minimal`, or override command gates with workflow-defined `gatePresets` or `--preset-file`.
 
 `validate` checks workflow shape, stage owners, gate presets, duplicate ids, and external preset registries without writing generated assets. Add `--json` to emit a machine-readable summary with workflow identity, role/stage/gate counts, gate type counts, roles, and stage gate ids.
 
@@ -558,7 +573,11 @@ Manual evidence file shape:
 }
 ```
 
+Workflow verification runs stages in order. If a command gate fails or a manual gate is still pending in an earlier stage, command gates in later stages are recorded as `skipped` and are not executed.
+
 When all command gates pass and every manual gate has evidence, `allGatesPassed` becomes `true`.
+
+Manual evidence can be keyed by gate id when that manual gate id is unique across the workflow. If multiple stages use the same manual gate id, key evidence as `<stageId>.<gateId>` so approvals do not accidentally apply to more than one stage.
 
 External preset registry files use the same `gatePresets` shape:
 
