@@ -334,7 +334,7 @@ function parseSchemaArgs(args) {
 function parseInitArgs(args) {
   const options = {
     out: '.',
-    name: 'production-feature-workflow',
+    name: '',
     template: 'production-feature',
     templateSpecified: false,
     team: '',
@@ -527,7 +527,7 @@ function printHelp() {
   console.log(`TPAN-OPT/CO-WORKER
 
 Usage:
-  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name production-feature-workflow] [--force]
+  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
   tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
   tpan-opt-co-worker catalog [--json]
   tpan-opt-co-worker presets [--json]
@@ -557,14 +557,14 @@ function printInitHelp() {
   const defaultTeam = listReusableAgentTeams()[0].id
 
   console.log(`Usage:
-  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name production-feature-workflow] [--force]
+  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
 
 Options:
   --out <dir>       Output repository directory. Defaults to current directory.
   --template <id>   Workflow template id. Defaults to production-feature. Use minimal for language-neutral manual gates.
   --team <id>       Reusable agent team id. Uses the team's recommended template unless --template is set.
   --policy <id>     Organization policy pack id. Can be repeated.
-  --name <id>       Workflow name. Defaults to production-feature-workflow.
+  --name <id>       Workflow name. Defaults to the selected template's default name.
   --force           Overwrite an existing opt.workflow.json.
 
 Notes:

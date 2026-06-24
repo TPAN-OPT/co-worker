@@ -104,6 +104,45 @@ describe('init CLI', () => {
     }
   })
 
+  it('uses the selected template default workflow name when --name is omitted', async () => {
+    const productionDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const minimalDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+
+    try {
+      await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        productionDir,
+        '--template',
+        'production-feature'
+      ])
+      const { stdout } = await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        minimalDir,
+        '--template',
+        'minimal'
+      ])
+
+      const productionWorkflow = JSON.parse(
+        await readFile(join(productionDir, 'opt.workflow.json'), 'utf8')
+      )
+      const minimalWorkflow = JSON.parse(
+        await readFile(join(minimalDir, 'opt.workflow.json'), 'utf8')
+      )
+
+      assert.match(stdout, /minimal/)
+      assert.equal(productionWorkflow.name, 'production-feature-workflow')
+      assert.equal(minimalWorkflow.name, 'minimal-evidence-workflow')
+      assert.equal(minimalWorkflow.stages[0].id, 'plan')
+    } finally {
+      await rm(productionDir, { recursive: true, force: true })
+      await rm(minimalDir, { recursive: true, force: true })
+    }
+  })
+
   it('initializes a language-neutral minimal workflow template', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
     const workflowPath = join(targetDir, 'opt.workflow.json')

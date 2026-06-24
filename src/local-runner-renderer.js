@@ -214,7 +214,7 @@ function getRunStatus(exitCode, report) {
     return 'passed'
   }
 
-  if (exitCode === 0) {
+  if (report?.commandPassed === true) {
     return 'pending'
   }
 

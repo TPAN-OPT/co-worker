@@ -169,6 +169,55 @@ describe('generated local runner script', () => {
     }
   })
 
+  it('records pending runs when manual gates are unresolved', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-runner-'))
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(localRunnerWorkflow()), targetDir, {
+        force: true
+      })
+
+      await assert.rejects(
+        () =>
+          execFileAsync(
+            'node',
+            [join(targetDir, 'scripts', 'run-workflow.mjs'), '--run-id', 'pending-run'],
+            { cwd: targetDir }
+          ),
+        (error) => {
+          assert.equal(error.code, 1)
+          assert.match(
+            `${error.stdout}${error.stderr}`,
+            /requires every command and manual gate/
+          )
+          return true
+        }
+      )
+
+      const runDir = join(targetDir, '.tpan-opt-co-worker', 'runs', 'pending-run')
+      const report = JSON.parse(await readFile(join(runDir, 'evidence.json'), 'utf8'))
+      const index = JSON.parse(
+        await readFile(join(targetDir, '.tpan-opt-co-worker', 'runs', 'index.json'), 'utf8')
+      )
+      const consoleRuns = JSON.parse(
+        await readFile(
+          join(targetDir, '.tpan-opt-co-worker', 'console', 'runs.json'),
+          'utf8'
+        )
+      )
+
+      assert.equal(report.commandPassed, true)
+      assert.equal(report.allGatesPassed, false)
+      assert.equal(index.runs[0].id, 'pending-run')
+      assert.equal(index.runs[0].status, 'pending')
+      assert.equal(index.runs[0].commandPassed, true)
+      assert.equal(index.runs[0].allGatesPassed, false)
+      assert.equal(consoleRuns.details['pending-run'].manualGates[0].status, 'pending')
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects unsafe run ids before invoking verification', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-runner-'))
 
@@ -236,10 +285,14 @@ describe('generated local runner script', () => {
         })
       )
 
-      await execFileAsync(
-        'node',
-        [join(targetDir, 'scripts', 'run-workflow.mjs'), '--run-id', 'new-run'],
-        { cwd: targetDir }
+      await assert.rejects(
+        () =>
+          execFileAsync(
+            'node',
+            [join(targetDir, 'scripts', 'run-workflow.mjs'), '--run-id', 'new-run'],
+            { cwd: targetDir }
+          ),
+        /requires every command and manual gate/
       )
 
       const index = JSON.parse(
@@ -252,6 +305,8 @@ describe('generated local runner script', () => {
         )
       )
 
+      assert.equal(index.runs[0].id, 'new-run')
+      assert.equal(index.runs[0].status, 'pending')
       assert.equal(index.runs[1].id, 'old-run')
       assert.equal(index.runs[1].runDir, '.tpan-opt-co-worker/runs/old-run')
       assert.deepEqual(consoleRuns.details['old-run'], {

@@ -89,6 +89,11 @@ if (options.reportPath) {
   console.log(\`Wrote evidence report: \${options.reportPath}\`)
 }
 
+if (!report.allGatesPassed) {
+  console.error('Workflow verification requires every command and manual gate to pass.')
+  process.exitCode = process.exitCode || 1
+}
+
 function runCommandGate(gate) {
   console.log(\`command:\${gate.id} [\${gate.stageId}] \${gate.command}\`)
   const result = spawnSync(gate.command, {
@@ -241,7 +246,7 @@ function buildReport({ workflow, startedAt, commandGateResults, manualGateResult
 
   return {
     workflow,
-    passed: commandPassed,
+    passed: allGatesPassed,
     commandPassed,
     allGatesPassed,
     startedAt,

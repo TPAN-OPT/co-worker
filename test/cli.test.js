@@ -22,6 +22,15 @@ describe('CLI', () => {
     assert.match(stdout, /--template production-feature/)
     assert.match(stdout, /--team product-delivery/)
     assert.match(stdout, /--policy quality-standard/)
+    assert.match(stdout, /--name workflow-name/)
+  })
+
+  it('documents template-specific init default names', async () => {
+    const { stdout } = await execFileAsync('node', [cliPath, 'init', '--help'])
+
+    assert.match(stdout, /--name workflow-name/)
+    assert.match(stdout, /Defaults to the selected template's default name/)
+    assert.doesNotMatch(stdout, /\[--name production-feature-workflow\]/)
   })
 
   it('rejects unknown root commands with help', async () => {

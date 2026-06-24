@@ -35,7 +35,16 @@ describe('generated verify-workflow script', () => {
       const scriptPath = await writeVerifyScript(targetDir, {
         command: 'node -e "process.exit(0)"'
       })
-      const { stdout } = await execFileAsync('node', [scriptPath])
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
 
       assert.match(stdout, /command:unit_tests_pass/)
       assert.match(stdout, /PASS/)
@@ -53,7 +62,16 @@ describe('generated verify-workflow script', () => {
         preset: 'node:test',
         command: 'node -e "process.exit(0)"'
       })
-      const { stdout } = await execFileAsync('node', [scriptPath])
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
 
       assert.match(stdout, /command:unit_tests_pass/)
       assert.match(stdout, /PASS/)
@@ -76,7 +94,16 @@ describe('generated verify-workflow script', () => {
         },
         preset: 'team:custom-test'
       })
-      const { stdout } = await execFileAsync('node', [scriptPath])
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
 
       assert.match(stdout, /command:unit_tests_pass/)
       assert.match(stdout, /PASS command:unit_tests_pass/)
@@ -111,11 +138,21 @@ describe('generated verify-workflow script', () => {
       })
       const reportPath = join(targetDir, 'evidence.json')
 
-      await execFileAsync('node', [scriptPath, '--report', reportPath])
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--report', reportPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          assert.match(
+            `${error.stdout}${error.stderr}`,
+            /requires every command and manual gate/
+          )
+          return true
+        }
+      )
 
       const report = JSON.parse(await readFile(reportPath, 'utf8'))
       assert.equal(report.workflow.name, 'verify-workflow')
-      assert.equal(report.passed, true)
+      assert.equal(report.passed, false)
       assert.equal(report.commandPassed, true)
       assert.equal(report.allGatesPassed, false)
       assert.deepEqual(report.commandGates[0], {
@@ -134,6 +171,37 @@ describe('generated verify-workflow script', () => {
         description: 'Human lead approved the release.',
         status: 'pending'
       })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits non-zero when manual gates remain pending even if command gates pass', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const reportPath = join(targetDir, 'strict-pending-report.json')
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--report', reportPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          assert.match(
+            `${error.stdout}${error.stderr}`,
+            /requires every command and manual gate/
+          )
+          return true
+        }
+      )
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.passed, false)
+      assert.equal(report.commandPassed, true)
+      assert.equal(report.allGatesPassed, false)
+      assert.equal(report.manualGates[0].status, 'pending')
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
@@ -195,6 +263,7 @@ describe('generated verify-workflow script', () => {
       ])
 
       const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.passed, true)
       assert.equal(report.commandPassed, true)
       assert.equal(report.allGatesPassed, true)
       assert.deepEqual(report.manualGates[0], {
@@ -253,7 +322,16 @@ describe('generated verify-workflow script', () => {
         ]
       })
       const reportPath = join(targetDir, 'blocked-report.json')
-      const { stdout } = await execFileAsync('node', [scriptPath, '--report', reportPath])
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--report', reportPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
 
       const report = JSON.parse(await readFile(reportPath, 'utf8'))
       assert.doesNotMatch(stdout, /DEPLOY_CHECK_RAN/)
@@ -384,13 +462,17 @@ describe('generated verify-workflow script', () => {
         })
       )
 
-      await execFileAsync('node', [
-        scriptPath,
-        '--manual-evidence',
-        manualEvidencePath,
-        '--report',
-        reportPath
-      ])
+      await assert.rejects(
+        () =>
+          execFileAsync('node', [
+            scriptPath,
+            '--manual-evidence',
+            manualEvidencePath,
+            '--report',
+            reportPath
+          ]),
+        /requires every command and manual gate/
+      )
 
       const report = JSON.parse(await readFile(reportPath, 'utf8'))
       assert.equal(report.manualGates[0].stageId, 'review')
