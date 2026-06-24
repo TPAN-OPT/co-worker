@@ -392,6 +392,23 @@ OPT 模式让一个人可以管理一个结构化的虚拟团队：
 
 目标是让团队标准贴近代码仓库，同时支持组织级复用。
 
+## 工程质量
+
+商业应用首先需要可重复的本地检查。本仓库提供零运行时依赖的质量脚本：
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+npm run test:coverage
+npm audit --audit-level=high
+```
+
+- `lint` 和 `typecheck` 会用当前 Node runtime 对所有 JavaScript 和 MJS 文件做语法检查。
+- `build` 会把示例 workflow 编译到临时仓库，验证生成资产可以正常写出。
+- `test:coverage` 会运行完整 Node 测试套件并输出覆盖率。
+- `npm audit --audit-level=high` 会验证依赖安全状态；当前 package 没有运行时依赖。
+
 ## 当前 CLI
 
 ```text

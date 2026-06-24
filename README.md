@@ -392,6 +392,23 @@ A workflow can be compiled into repository-local assets such as:
 
 The goal is to keep team standards close to the codebase while allowing organization-level reuse.
 
+## Engineering Quality
+
+Commercial use starts with repeatable local checks. This repository ships no-dependency quality scripts:
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+npm run test:coverage
+npm audit --audit-level=high
+```
+
+- `lint` and `typecheck` syntax-check all JavaScript and MJS files with the active Node runtime.
+- `build` compiles the example workflow into a temporary repository and verifies generated assets can be written.
+- `test:coverage` runs the full Node test suite with coverage reporting.
+- `npm audit --audit-level=high` verifies dependency security posture; the package currently has no runtime dependencies.
+
 ## Current CLI
 
 ```text

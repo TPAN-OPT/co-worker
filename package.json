@@ -3,12 +3,39 @@
   "version": "0.1.0",
   "description": "AI-native team operating system workflow compiler for OPT teams.",
   "type": "module",
+  "keywords": [
+    "ai-agents",
+    "workflow",
+    "codex",
+    "claude-code",
+    "mcp",
+    "opt",
+    "developer-tools"
+  ],
+  "homepage": "https://github.com/TPAN-OPT/co-worker#readme",
+  "bugs": {
+    "url": "https://github.com/TPAN-OPT/co-worker/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TPAN-OPT/co-worker.git"
+  },
   "bin": {
     "tpan-opt-co-worker": "./src/cli.js"
   },
+  "files": [
+    "src",
+    "examples",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "node scripts/build-smoke.mjs",
+    "lint": "node scripts/check-js.mjs",
     "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage"
+    "test:coverage": "node --test --experimental-test-coverage",
+    "typecheck": "node scripts/check-js.mjs"
   },
   "engines": {
     "node": ">=20"
