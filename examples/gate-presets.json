@@ -1,0 +1,13 @@
+{
+  "gatePresets": {
+    "org:security-review": {
+      "type": "manual",
+      "description": "Security reviewer confirmed there are no unresolved critical or high findings."
+    },
+    "org:docs-check": {
+      "type": "command",
+      "description": "Run organization-standard documentation checks.",
+      "command": "npm run docs:check"
+    }
+  }
+}

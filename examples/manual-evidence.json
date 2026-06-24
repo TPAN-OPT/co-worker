@@ -1,0 +1,34 @@
+{
+  "gates": {
+    "open_questions_resolved": {
+      "approvedBy": "product-owner@example.com",
+      "note": "All blocking product questions are answered or assigned.",
+      "links": []
+    },
+    "non_goals_confirmed": {
+      "approvedBy": "product-owner@example.com",
+      "note": "Non-goals and scope boundaries are documented.",
+      "links": []
+    },
+    "no_critical_security_issues": {
+      "approvedBy": "security-reviewer@example.com",
+      "note": "Security review completed with no unresolved critical findings.",
+      "links": []
+    },
+    "no_high_correctness_issues": {
+      "approvedBy": "engineering-owner@example.com",
+      "note": "Code review completed with no unresolved high-severity correctness issues.",
+      "links": []
+    },
+    "verification_evidence_attached": {
+      "approvedBy": "release-manager@example.com",
+      "note": "Verification evidence is attached to the release packet.",
+      "links": []
+    },
+    "human_approval": {
+      "approvedBy": "team-lead@example.com",
+      "note": "Release approved by the human lead.",
+      "links": []
+    }
+  }
+}

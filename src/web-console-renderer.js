@@ -1,0 +1,726 @@
+export function renderWebConsole(workflow) {
+  const workflowData = JSON.stringify(workflow)
+  const workflowJson = JSON.stringify(workflow, null, 2)
+  const workflowJsonHref = encodeURIComponent(workflowJson)
+  const roleRows = Object.entries(workflow.roles)
+    .map(([roleId, role]) => renderRoleRow(roleId, role, workflow))
+    .join('\n')
+  const stageSections = workflow.stages.map(renderStageSection).join('\n')
+  const organizationSection = renderOrganizationSection(workflow.organization)
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TPAN-OPT/CO-WORKER Console</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8f7;
+      --surface: #ffffff;
+      --text: #17201c;
+      --muted: #64716b;
+      --line: #dce3df;
+      --accent: #256f5b;
+      --accent-soft: #e4f2ec;
+      --command: #345f9f;
+      --manual: #8f5a13;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 24px auto 40px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 24px; line-height: 1.2; letter-spacing: 0; }
+    h2 { font-size: 16px; margin-bottom: 12px; letter-spacing: 0; }
+    h3 { font-size: 14px; letter-spacing: 0; }
+    .mark {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+    }
+    .muted { color: var(--muted); }
+    .overview {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .metric, .panel, .stage, .run {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .metric { padding: 16px; }
+    .metric strong { display: block; font-size: 22px; line-height: 1.1; }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .panel { padding: 18px; }
+    .role {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+    .role:first-of-type { border-top: 0; padding-top: 0; }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #fbfcfb;
+      white-space: nowrap;
+    }
+    .stage {
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .stage-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .owner {
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-radius: 999px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+    .gate {
+      display: grid;
+      grid-template-columns: 100px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .badge {
+      width: max-content;
+      min-width: 76px;
+      text-align: center;
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: #ffffff;
+      font-size: 12px;
+      line-height: 20px;
+    }
+    .badge.manual { background: var(--manual); }
+    .badge.command { background: var(--command); }
+    .console-note {
+      margin-top: 16px;
+      color: var(--muted);
+    }
+    .organization-panel, .designer-panel, .summary-panel, .run-panel, .detail-panel {
+      margin-top: 16px;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .section-head h2 { margin-bottom: 0; }
+    .designer-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .action {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 5px 10px;
+      background: #fbfcfb;
+      color: var(--text);
+      font: inherit;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .action:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .filter-button {
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #fbfcfb;
+      color: var(--muted);
+      font: inherit;
+      cursor: pointer;
+    }
+    .filter-button.active-filter {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .schema-line {
+      margin-bottom: 10px;
+    }
+    #workflow-json {
+      display: block;
+      width: 100%;
+      min-height: 300px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+      background: #fbfcfb;
+      color: var(--text);
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      overflow: auto;
+    }
+    .run-summary {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .summary-item {
+      min-width: 0;
+      padding-left: 12px;
+      border-left: 3px solid var(--line);
+    }
+    .summary-item strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.15;
+    }
+    .summary-item.passed { border-left-color: #256f5b; }
+    .summary-item.pending { border-left-color: #8f5a13; }
+    .summary-item.failed { border-left-color: #a33b32; }
+    .run {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 120px 180px;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      margin-top: 8px;
+    }
+    .run-artifacts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .artifact-link {
+      color: var(--accent);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .artifact-link:hover {
+      text-decoration: underline;
+    }
+    .status {
+      width: max-content;
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: #ffffff;
+      font-size: 12px;
+      line-height: 20px;
+    }
+    .status.passed { background: #256f5b; }
+    .status.pending { background: #8f5a13; }
+    .status.failed { background: #a33b32; }
+    .detail {
+      border-top: 1px solid var(--line);
+      padding: 12px 0;
+    }
+    .detail:first-of-type { border-top: 0; padding-top: 0; }
+    .gate-result {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) 90px;
+      gap: 10px;
+      align-items: start;
+      padding: 8px 0;
+    }
+    .gate-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .gate-meta div {
+      overflow-wrap: anywhere;
+    }
+    .evidence-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .evidence-link {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .evidence-link:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 820px) {
+      header { padding: 18px 16px; }
+      .overview, .grid, .run-summary { grid-template-columns: 1fr; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .role, .gate, .run, .gate-result { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <svg class="mark" viewBox="0 0 44 44" role="img" aria-label="TPAN-OPT/CO-WORKER">
+      <rect x="2" y="2" width="40" height="40" rx="8" fill="#256f5b"></rect>
+      <path d="M12 14h20M12 22h20M12 30h12" stroke="#ffffff" stroke-width="3" stroke-linecap="round"></path>
+    </svg>
+    <div>
+      <h1>${escapeHtml(workflow.name)}</h1>
+      <p class="muted">TPAN-OPT/CO-WORKER Console · workflow version ${escapeHtml(workflow.version)}</p>
+    </div>
+  </header>
+  <main>
+    <section class="overview" aria-label="Workflow overview">
+      <div class="metric"><span class="muted">Roles</span><strong>${Object.keys(workflow.roles).length}</strong></div>
+      <div class="metric"><span class="muted">Stages</span><strong>${workflow.stages.length}</strong></div>
+      <div class="metric"><span class="muted">Manual Gates</span><strong>${countGatesByType(workflow, 'manual')}</strong></div>
+      <div class="metric"><span class="muted">Command Gates</span><strong>${countGatesByType(workflow, 'command')}</strong></div>
+    </section>
+    ${organizationSection}
+    <section class="grid">
+      <div class="panel">
+        <h2>Agent Roles</h2>
+        ${roleRows}
+      </div>
+      <div>
+        <h2>Stage Pipeline</h2>
+        ${stageSections}
+      </div>
+    </section>
+    <section class="panel designer-panel" aria-labelledby="workflow-designer-title">
+      <div class="section-head">
+        <h2 id="workflow-designer-title">Workflow Designer</h2>
+        <div class="designer-actions">
+          <button type="button" class="action" id="copy-workflow-json">Copy JSON</button>
+          <a class="action" download="opt.workflow.json" href="data:application/json;charset=utf-8,${workflowJsonHref}">Download Workflow JSON</a>
+        </div>
+      </div>
+      <p class="muted schema-line">Schema: <code>.tpan-opt-co-worker/workflow.schema.json</code></p>
+      <textarea id="workflow-json" readonly spellcheck="false">${escapeHtml(workflowJson)}</textarea>
+    </section>
+    <section class="panel summary-panel" aria-labelledby="run-summary-title">
+      <h2 id="run-summary-title">Run Summary</h2>
+      <div id="run-summary" class="muted">No workflow runs recorded yet.</div>
+    </section>
+    <section class="panel run-panel" aria-labelledby="run-history-title">
+      <div class="section-head">
+        <h2 id="run-history-title">Run History</h2>
+        <div class="filter-bar" aria-label="Run status filters">
+          <button type="button" class="filter-button active-filter" data-status-filter="all">All</button>
+          <button type="button" class="filter-button" data-status-filter="passed">Passed</button>
+          <button type="button" class="filter-button" data-status-filter="pending">Pending</button>
+          <button type="button" class="filter-button" data-status-filter="failed">Failed</button>
+        </div>
+      </div>
+      <div id="run-history" class="muted">No workflow runs recorded yet.</div>
+    </section>
+    <section class="panel detail-panel" aria-labelledby="gate-details-title">
+      <h2 id="gate-details-title">Gate Details</h2>
+      <div id="gate-details" class="muted">Run a workflow to inspect command and manual gate results.</div>
+    </section>
+    <p class="console-note">Generated from the repository workflow manifest. Run <code>node scripts/run-workflow.mjs --run-id &lt;id&gt;</code> to collect verification evidence.</p>
+  </main>
+  <script id="workflow-data" type="application/json">${escapeScriptJson(workflowData)}</script>
+  <script src="runs.js"></script>
+  <script>
+    let currentRuns = []
+    let currentDetails = {}
+    let activeRunStatusFilter = 'all'
+
+    initWorkflowDesigner()
+    initRunFilters()
+    loadRunHistory()
+
+    function initWorkflowDesigner() {
+      const copyButton = document.getElementById('copy-workflow-json')
+      if (!copyButton) return
+      copyButton.addEventListener('click', copyWorkflowJson)
+    }
+
+    async function copyWorkflowJson() {
+      const textarea = document.getElementById('workflow-json')
+      const copyButton = document.getElementById('copy-workflow-json')
+      if (!textarea || !copyButton) return
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(textarea.value)
+        } else {
+          textarea.focus()
+          textarea.select()
+          document.execCommand('copy')
+        }
+        copyButton.textContent = 'Copied'
+        window.setTimeout(() => {
+          copyButton.textContent = 'Copy JSON'
+        }, 1600)
+      } catch {
+        copyButton.textContent = 'Copy failed'
+        window.setTimeout(() => {
+          copyButton.textContent = 'Copy JSON'
+        }, 1600)
+      }
+    }
+
+    function initRunFilters() {
+      document.querySelectorAll('[data-status-filter]').forEach((button) => {
+        button.addEventListener('click', () => {
+          setRunStatusFilter(button.getAttribute('data-status-filter') || 'all')
+        })
+      })
+    }
+
+    function setRunStatusFilter(status) {
+      activeRunStatusFilter = ['all', 'passed', 'pending', 'failed'].includes(status) ? status : 'all'
+      document.querySelectorAll('[data-status-filter]').forEach((button) => {
+        const isActive = button.getAttribute('data-status-filter') === activeRunStatusFilter
+        button.classList.toggle('active-filter', isActive)
+      })
+      renderRunHistory(currentRuns)
+      renderGateDetails(currentRuns, currentDetails)
+    }
+
+    async function loadRunHistory() {
+      if (window.TPAN_OPT_RUNS && Array.isArray(window.TPAN_OPT_RUNS.runs)) {
+        renderRunData(window.TPAN_OPT_RUNS)
+        return
+      }
+
+      try {
+        const response = await fetch('runs.json', { cache: 'no-store' })
+        if (!response.ok) return
+        const data = await response.json()
+        renderRunData(data)
+      } catch {
+        renderRunData({ runs: [], details: {} })
+      }
+    }
+
+    function renderRunData(data) {
+      const runs = Array.isArray(data.runs) ? data.runs : []
+      const details = data.details && typeof data.details === 'object' ? data.details : {}
+      currentRuns = runs
+      currentDetails = details
+      renderRunSummary(runs)
+      renderRunHistory(runs)
+      renderGateDetails(runs, details)
+    }
+
+    function renderRunSummary(runs) {
+      const container = document.getElementById('run-summary')
+      if (!container) return
+      if (runs.length === 0) {
+        container.className = 'muted'
+        container.textContent = 'No workflow runs recorded yet.'
+        return
+      }
+
+      const counts = runs.reduce(
+        (summary, run) => {
+          const status = normalizeStatus(run.status)
+          return {
+            ...summary,
+            total: summary.total + 1,
+            [status]: summary[status] + 1
+          }
+        },
+        { total: 0, passed: 0, pending: 0, failed: 0 }
+      )
+      const latestRun = runs.reduce((latest, run) => {
+        if (!latest) return run
+        return String(run.finishedAt || '') > String(latest.finishedAt || '') ? run : latest
+      }, null)
+
+      container.className = 'run-summary'
+      container.innerHTML = [
+        renderSummaryItem('Total', counts.total, ''),
+        renderSummaryItem('Passed', counts.passed, 'passed'),
+        renderSummaryItem('Pending', counts.pending, 'pending'),
+        renderSummaryItem('Failed', counts.failed, 'failed'),
+        renderSummaryItem('Last Run', latestRun ? latestRun.id || 'unknown-run' : 'none', '')
+      ].join('')
+    }
+
+    function renderSummaryItem(label, value, status) {
+      const className = status ? 'summary-item ' + status : 'summary-item'
+      return '<div class="' + className + '">' +
+        '<span class="muted">' + escapeHtml(label) + '</span>' +
+        '<strong>' + escapeHtml(value) + '</strong>' +
+      '</div>'
+    }
+
+    function renderRunHistory(runs) {
+      const container = document.getElementById('run-history')
+      if (!container) return
+      const filteredRuns = filterRunsByStatus(runs, activeRunStatusFilter)
+      if (filteredRuns.length === 0) {
+        container.textContent = 'No workflow runs recorded yet.'
+        return
+      }
+      container.className = ''
+      container.innerHTML = filteredRuns.map(renderRun).join('')
+    }
+
+    function filterRunsByStatus(runs, status) {
+      if (status === 'all') return runs
+      return runs.filter((run) => normalizeStatus(run.status) === status)
+    }
+
+    function renderGateDetails(runs, details) {
+      const container = document.getElementById('gate-details')
+      if (!container) return
+      const filteredRuns = filterRunsByStatus(runs, activeRunStatusFilter)
+      const runDetails = filteredRuns
+        .map((run) => ({ run, detail: details[run.id] || { commandGates: [], manualGates: [] } }))
+        .filter((entry) => entry.detail.commandGates.length > 0 || entry.detail.manualGates.length > 0)
+
+      if (runDetails.length === 0) {
+        container.className = 'muted'
+        container.textContent = 'Run a workflow to inspect command and manual gate results.'
+        return
+      }
+
+      container.className = ''
+      container.innerHTML = runDetails.map(renderRunDetails).join('')
+    }
+
+    function renderRunDetails(entry) {
+      const gates = [
+        ...entry.detail.commandGates.map((gate) => ({ ...gate, kind: 'command' })),
+        ...entry.detail.manualGates.map((gate) => ({ ...gate, kind: 'manual' }))
+      ]
+
+      return '<article class="detail">' +
+        '<h3>' + escapeHtml(entry.run.id || 'unknown-run') + '</h3>' +
+        gates.map(renderGateResult).join('') +
+      '</article>'
+    }
+
+    function renderGateResult(gate) {
+      const status = String(gate.status || 'pending')
+      const safeStatus = ['passed', 'pending', 'failed'].includes(status) ? status : 'pending'
+      return '<div class="gate-result">' +
+        '<span class="badge ' + escapeHtml(gate.kind) + '">' + escapeHtml(gate.kind) + '</span>' +
+        '<div><strong>' + escapeHtml(gate.id || 'unknown-gate') + '</strong><p class="muted">' + escapeHtml(gate.stageId || '') + '</p>' + renderGateMetadata(gate) + '</div>' +
+        '<span class="status ' + safeStatus + '">' + escapeHtml(status) + '</span>' +
+      '</div>'
+    }
+
+    function renderGateMetadata(gate) {
+      const rows = []
+      if (gate.kind === 'command' && gate.command) {
+        rows.push('Command: ' + escapeHtml(gate.command))
+      }
+      if (gate.kind === 'command' && Object.prototype.hasOwnProperty.call(gate, 'exitCode')) {
+        rows.push('Exit code: ' + escapeHtml(gate.exitCode))
+      }
+
+      const evidence = gate.evidence && typeof gate.evidence === 'object' ? gate.evidence : null
+      if (evidence && evidence.approvedBy) {
+        rows.push('Approved by: ' + escapeHtml(evidence.approvedBy))
+      }
+      if (evidence && evidence.note) {
+        rows.push('Note: ' + escapeHtml(evidence.note))
+      }
+      if (evidence && Array.isArray(evidence.links) && evidence.links.length > 0) {
+        rows.push(renderEvidenceLinks(evidence.links))
+      }
+
+      if (rows.length === 0) return ''
+      return '<div class="gate-meta">' + rows.map((row) => '<div>' + row + '</div>').join('') + '</div>'
+    }
+
+    function renderEvidenceLinks(links) {
+      const renderedLinks = links.map((link, index) => {
+        const safeUrl = getSafeEvidenceUrl(link)
+        if (!safeUrl) return '<span>' + escapeHtml(link) + '</span>'
+        return '<a class="evidence-link" href="' + escapeHtml(safeUrl) + '" target="_blank" rel="noreferrer">Link ' + escapeHtml(index + 1) + '</a>'
+      })
+
+      return '<div class="evidence-links">' + renderedLinks.join('') + '</div>'
+    }
+
+    function getSafeEvidenceUrl(link) {
+      try {
+        const url = new URL(String(link))
+        return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : ''
+      } catch {
+        return ''
+      }
+    }
+
+    function renderRun(run) {
+      const rawStatus = String(run.status || 'pending')
+      const status = normalizeStatus(rawStatus)
+      return '<article class="run">' +
+        '<div><strong>' + escapeHtml(run.id || 'unknown-run') + '</strong><p class="muted">' + escapeHtml(run.runDir || '') + '</p>' + renderRunArtifactLinks(run) + '</div>' +
+        '<span class="status ' + status + '">' + escapeHtml(rawStatus) + '</span>' +
+        '<time class="muted">' + escapeHtml(run.finishedAt || '') + '</time>' +
+      '</article>'
+    }
+
+    function renderRunArtifactLinks(run) {
+      const artifactBaseHref = getRunArtifactBaseHref(run)
+      if (!artifactBaseHref) return ''
+      return '<div class="run-artifacts">' +
+        '<a class="artifact-link" href="' + artifactBaseHref + '/evidence.json">Evidence JSON</a>' +
+        '<a class="artifact-link" href="' + artifactBaseHref + '/summary.md">Summary MD</a>' +
+      '</div>'
+    }
+
+    function getRunArtifactBaseHref(run) {
+      const runDir = String(run.runDir || '')
+      const prefix = '.tpan-opt-co-worker/runs/'
+      if (!runDir.startsWith(prefix)) return ''
+      const relativeRunDir = runDir
+        .slice(prefix.length)
+        .split('/')
+        .filter(Boolean)
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')
+
+      return relativeRunDir ? '../runs/' + relativeRunDir : ''
+    }
+
+    function normalizeStatus(status) {
+      const rawStatus = String(status || 'pending')
+      return ['passed', 'pending', 'failed'].includes(rawStatus) ? rawStatus : 'pending'
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+    }
+  </script>
+</body>
+</html>
+`
+}
+
+function renderOrganizationSection(organization) {
+  if (!organization) {
+    return ''
+  }
+
+  const team = organization.team || 'none'
+  const policies = organization.policies || []
+  const policyChips = policies
+    .map((policy) => `<span class="chip">${escapeHtml(policy)}</span>`)
+    .join('')
+
+  return `<section class="panel organization-panel" aria-labelledby="organization-title">
+      <h2 id="organization-title">Organization</h2>
+      <p><span class="muted">Team</span> ${escapeHtml(team)}</p>
+      <div class="chips">${policyChips || '<span class="chip">no policies</span>'}</div>
+    </section>`
+}
+
+function renderRoleRow(roleId, role, workflow) {
+  const ownedStages = workflow.stages
+    .filter((stage) => stage.owner === roleId)
+    .map((stage) => stage.id)
+
+  return `<article class="role">
+  <div>
+    <h3>${escapeHtml(roleId)}</h3>
+    <p class="muted">${ownedStages.length} owned stage${ownedStages.length === 1 ? '' : 's'}</p>
+  </div>
+  <div>
+    <p>${escapeHtml(role.description)}</p>
+    <div class="chips">${role.skills.map((skill) => `<span class="chip">${escapeHtml(skill)}</span>`).join('')}</div>
+  </div>
+</article>`
+}
+
+function renderStageSection(stage) {
+  const gates = stage.gates.map(renderGate).join('\n')
+  return `<article class="stage">
+  <div class="stage-head">
+    <div>
+      <h3>${escapeHtml(stage.id)}</h3>
+      <p class="muted">Output: ${stage.output ? escapeHtml(stage.output) : 'none'}</p>
+    </div>
+    <span class="owner">${escapeHtml(stage.owner)}</span>
+  </div>
+  ${gates || '<p class="muted">No gates configured.</p>'}
+</article>`
+}
+
+function renderGate(gate) {
+  const description = gate.description || 'No description provided.'
+  return `<div class="gate">
+  <span class="badge ${escapeHtml(gate.type)}">${escapeHtml(gate.type)}</span>
+  <div>
+    <strong>${escapeHtml(gate.id)}</strong>
+    <p class="muted">${escapeHtml(description)}</p>
+  </div>
+</div>`
+}
+
+function countGatesByType(workflow, type) {
+  return workflow.stages.reduce(
+    (total, stage) =>
+      total + stage.gates.filter((gate) => gate.type === type).length,
+    0
+  )
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function escapeScriptJson(value) {
+  return value.replaceAll('<', '\\u003c')
+}

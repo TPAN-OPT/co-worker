@@ -1,0 +1,17 @@
+{
+  "name": "tpan-opt-co-worker",
+  "version": "0.1.0",
+  "description": "AI-native team operating system workflow compiler for OPT teams.",
+  "type": "module",
+  "bin": {
+    "tpan-opt-co-worker": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
