@@ -397,17 +397,24 @@ OPT 模式让一个人可以管理一个结构化的虚拟团队：
 商业应用首先需要可重复的本地检查。本仓库提供零运行时依赖的质量脚本：
 
 ```bash
+npm run verify
 npm run lint
 npm run typecheck
-npm run build
+npm run repo:health
 npm run test:coverage
+npm run build
+npm run pack:check
 npm audit --audit-level=high
 ```
 
+- `verify` 会运行发布前完整本地质量门禁。
 - `lint` 和 `typecheck` 会用当前 Node runtime 对所有 JavaScript 和 MJS 文件做语法检查。
+- `repo:health` 会检查未解决冲突标记、focused/skipped tests、命名漂移和源码文件规模。
+- `test:coverage` 会运行完整 Node 测试套件，并强制要求 line、branch、function 覆盖率均不低于 80%。
 - `build` 会把示例 workflow 编译到临时仓库，验证生成资产可以正常写出。
-- `test:coverage` 会运行完整 Node 测试套件并输出覆盖率。
+- `pack:check` 会用隔离 npm cache 执行 package dry run，并验证必要发布文件存在。
 - `npm audit --audit-level=high` 会验证依赖安全状态；当前 package 没有运行时依赖。
+GitHub Actions 会在 `main` push 和 pull request 中用 Node.js 20 与 22 运行同一套质量门禁。
 
 ## 当前 CLI
 

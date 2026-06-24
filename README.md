@@ -397,17 +397,24 @@ The goal is to keep team standards close to the codebase while allowing organiza
 Commercial use starts with repeatable local checks. This repository ships no-dependency quality scripts:
 
 ```bash
+npm run verify
 npm run lint
 npm run typecheck
-npm run build
+npm run repo:health
 npm run test:coverage
+npm run build
+npm run pack:check
 npm audit --audit-level=high
 ```
 
+- `verify` runs the complete local quality gate used before release.
 - `lint` and `typecheck` syntax-check all JavaScript and MJS files with the active Node runtime.
+- `repo:health` checks unresolved conflict markers, focused/skipped tests, naming drift, and source file size.
+- `test:coverage` runs the full Node test suite and enforces 80%+ line, branch, and function coverage.
 - `build` compiles the example workflow into a temporary repository and verifies generated assets can be written.
-- `test:coverage` runs the full Node test suite with coverage reporting.
+- `pack:check` runs an npm package dry run with an isolated cache and verifies required release files.
 - `npm audit --audit-level=high` verifies dependency security posture; the package currently has no runtime dependencies.
+GitHub Actions runs the same quality gates on `main` pushes and pull requests for Node.js 20 and 22.
 
 ## Current CLI
 

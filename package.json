@@ -33,9 +33,12 @@
   "scripts": {
     "build": "node scripts/build-smoke.mjs",
     "lint": "node scripts/check-js.mjs",
+    "pack:check": "node scripts/pack-smoke.mjs",
+    "repo:health": "node scripts/repo-health.mjs",
     "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage",
-    "typecheck": "node scripts/check-js.mjs"
+    "test:coverage": "node scripts/check-coverage.mjs",
+    "typecheck": "node scripts/check-js.mjs",
+    "verify": "node scripts/verify.mjs"
   },
   "engines": {
     "node": ">=20"
