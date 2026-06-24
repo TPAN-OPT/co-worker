@@ -1,4 +1,7 @@
+import { createCatalog } from './catalog-renderer.js'
+
 export function renderWebConsole(workflow) {
+  const catalog = createCatalog()
   const workflowData = JSON.stringify(workflow)
   const workflowJson = JSON.stringify(workflow, null, 2)
   const workflowJsonHref = encodeURIComponent(workflowJson)
@@ -7,6 +10,7 @@ export function renderWebConsole(workflow) {
     .join('\n')
   const stageSections = workflow.stages.map(renderStageSection).join('\n')
   const organizationSection = renderOrganizationSection(workflow.organization)
+  const catalogSection = renderCatalogSection(catalog)
 
   return `<!doctype html>
 <html lang="en">
@@ -142,7 +146,7 @@ export function renderWebConsole(workflow) {
       margin-top: 16px;
       color: var(--muted);
     }
-    .organization-panel, .designer-panel, .summary-panel, .run-panel, .detail-panel {
+    .organization-panel, .designer-panel, .catalog-panel, .summary-panel, .run-panel, .detail-panel {
       margin-top: 16px;
     }
     .section-head {
@@ -280,6 +284,20 @@ export function renderWebConsole(workflow) {
     .gate-meta div {
       overflow-wrap: anywhere;
     }
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .catalog-column {
+      min-width: 0;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    .catalog-item {
+      margin-top: 10px;
+      overflow-wrap: anywhere;
+    }
     .evidence-links {
       display: flex;
       flex-wrap: wrap;
@@ -295,7 +313,7 @@ export function renderWebConsole(workflow) {
     }
     @media (max-width: 820px) {
       header { padding: 18px 16px; }
-      .overview, .grid, .run-summary { grid-template-columns: 1fr; }
+      .overview, .grid, .catalog-grid, .run-summary { grid-template-columns: 1fr; }
       .section-head { align-items: flex-start; flex-direction: column; }
       .role, .gate, .run, .gate-result { grid-template-columns: 1fr; }
     }
@@ -341,6 +359,7 @@ export function renderWebConsole(workflow) {
       <p class="muted schema-line">Schema: <code>.tpan-opt-co-worker/workflow.schema.json</code></p>
       <textarea id="workflow-json" readonly spellcheck="false">${escapeHtml(workflowJson)}</textarea>
     </section>
+    ${catalogSection}
     <section class="panel summary-panel" aria-labelledby="run-summary-title">
       <h2 id="run-summary-title">Run Summary</h2>
       <div id="run-summary" class="muted">No workflow runs recorded yet.</div>
@@ -364,6 +383,7 @@ export function renderWebConsole(workflow) {
     <p class="console-note">Generated from the repository workflow manifest. Run <code>node scripts/run-workflow.mjs --run-id &lt;id&gt;</code> to collect verification evidence.</p>
   </main>
   <script id="workflow-data" type="application/json">${escapeScriptJson(workflowData)}</script>
+  <script src="catalog.js"></script>
   <script src="runs.js"></script>
   <script>
     let currentRuns = []
@@ -642,6 +662,37 @@ export function renderWebConsole(workflow) {
 </body>
 </html>
 `
+}
+
+function renderCatalogSection(catalog) {
+  return `<section class="panel catalog-panel" aria-labelledby="catalog-title">
+      <div class="section-head">
+        <h2 id="catalog-title">Organization Catalog</h2>
+        <p class="muted">Templates, policy packs, reusable teams, and marketplace packages.</p>
+      </div>
+      <div class="catalog-grid">
+        ${renderCatalogColumn('Workflow Templates', catalog.templates)}
+        ${renderCatalogColumn('Policy Packs', catalog.policies)}
+        ${renderCatalogColumn('Reusable Teams', catalog.teams)}
+        ${renderCatalogColumn('Marketplace Packages', catalog.marketplace)}
+      </div>
+    </section>`
+}
+
+function renderCatalogColumn(title, items) {
+  const renderedItems = items
+    .map(
+      (item) => `<article class="catalog-item">
+          <h3>${escapeHtml(item.id)}</h3>
+          <p class="muted">${escapeHtml(item.description || item.name || '')}</p>
+        </article>`
+    )
+    .join('')
+
+  return `<div class="catalog-column">
+      <h3>${escapeHtml(title)}</h3>
+      ${renderedItems || '<p class="muted">No catalog entries.</p>'}
+    </div>`
 }
 
 function renderOrganizationSection(organization) {

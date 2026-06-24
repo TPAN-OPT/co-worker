@@ -437,7 +437,10 @@ Generated files:
 - `.github/pull_request_template.md`
 - `.github/workflows/tpan-opt-co-worker-verify.yml`
 - `.gitlab-ci.yml`
+- `.tpan-opt-co-worker/catalog.json`
 - `.tpan-opt-co-worker/console/index.html`
+- `.tpan-opt-co-worker/console/catalog.js`
+- `.tpan-opt-co-worker/marketplace.json`
 - `.tpan-opt-co-worker/workflow.manifest.json`
 - `.tpan-opt-co-worker/workflow.schema.json`
 - `opencode.json`
@@ -455,11 +458,13 @@ The generated Cursor rule at `.cursor/rules/tpan-opt-co-worker.mdc` keeps workfl
 
 The generated OpenCode assets include `opencode.json` plus one `.opencode/agents/<role>.md` subagent file per workflow role.
 
-The generated `.tpan-opt-co-worker/workflow.manifest.json` is the harness-neutral manifest for local runners and future adapters. It records organization metadata, normalized roles, stages, harness asset paths, and the standard verification command.
+The generated `.tpan-opt-co-worker/workflow.manifest.json` is the harness-neutral manifest for local runners and future adapters. It records organization metadata, normalized roles, stages, catalog and marketplace artifact paths, harness asset paths, and the standard verification command.
 
 The generated `.tpan-opt-co-worker/workflow.schema.json` is a JSON Schema for workflow authoring tools, editors, and future web-console form generation.
 
-The generated `.tpan-opt-co-worker/console/index.html` is a static workflow console that can be opened directly in a browser. It shows workflow identity, organization team/policy metadata, role ownership, stage sequence, manual/command gate distribution, a Workflow Designer seed panel with normalized workflow JSON, schema path, copy/download actions, run summary status counts, filterable run history with direct links to each run's `evidence.json` and `summary.md`, and matching per-run gate details from `.tpan-opt-co-worker/console/runs.js` with `.tpan-opt-co-worker/console/runs.json` as a data fallback. Gate details include command text, exit codes, approver, notes, and safe evidence links where available.
+The generated `.tpan-opt-co-worker/catalog.json`, `.tpan-opt-co-worker/marketplace.json`, and `.tpan-opt-co-worker/console/catalog.js` expose organization-level workflow templates, policy packs, reusable teams, and marketplace packages for skills, MCP servers, and hooks.
+
+The generated `.tpan-opt-co-worker/console/index.html` is a static workflow console that can be opened directly in a browser. It shows workflow identity, organization team/policy metadata, role ownership, stage sequence, manual/command gate distribution, a Workflow Designer seed panel with normalized workflow JSON, schema path, copy/download actions, organization catalog panels for reusable templates/policies/teams, marketplace package discovery, run summary status counts, filterable run history with direct links to each run's `evidence.json` and `summary.md`, and matching per-run gate details from `.tpan-opt-co-worker/console/runs.js` with `.tpan-opt-co-worker/console/runs.json` as a data fallback. Gate details include command text, exit codes, approver, notes, and safe evidence links where available.
 
 The generated local runner reads the manifest, invokes verification, writes a standard run directory, updates `.tpan-opt-co-worker/runs/index.json`, and mirrors the run index plus gate details to `.tpan-opt-co-worker/console/runs.json` and `.tpan-opt-co-worker/console/runs.js` for the static console:
 
@@ -629,9 +634,9 @@ Custom preset names cannot override built-in preset names.
 - [x] Add generated web console gate evidence metadata.
 - [x] Add generated web console run artifact links.
 - [x] Add marketplace catalog discovery for skills, MCP servers, and hooks.
-- [ ] Add a web console for workflow design and run tracking.
-- [ ] Add organization-level templates, policies, and reusable agent teams.
-- [ ] Add marketplace-style distribution for skills, MCP servers, and hooks.
+- [x] Add a web console for workflow design and run tracking.
+- [x] Add organization-level templates, policies, and reusable agent teams.
+- [x] Add marketplace-style distribution for skills, MCP servers, and hooks.
 
 ## Design Principles
 

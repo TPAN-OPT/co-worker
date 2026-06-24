@@ -437,7 +437,10 @@ tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file g
 - `.github/pull_request_template.md`
 - `.github/workflows/tpan-opt-co-worker-verify.yml`
 - `.gitlab-ci.yml`
+- `.tpan-opt-co-worker/catalog.json`
 - `.tpan-opt-co-worker/console/index.html`
+- `.tpan-opt-co-worker/console/catalog.js`
+- `.tpan-opt-co-worker/marketplace.json`
 - `.tpan-opt-co-worker/workflow.manifest.json`
 - `.tpan-opt-co-worker/workflow.schema.json`
 - `opencode.json`
@@ -455,11 +458,13 @@ tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file g
 
 生成的 OpenCode 资产包含 `opencode.json`，以及每个 workflow role 对应的 `.opencode/agents/<role>.md` subagent 文件。
 
-生成的 `.tpan-opt-co-worker/workflow.manifest.json` 是面向本地 runner 和后续 adapter 的 harness-neutral manifest，会记录 organization 元数据、标准化角色、阶段、harness 资产路径和统一验证命令。
+生成的 `.tpan-opt-co-worker/workflow.manifest.json` 是面向本地 runner 和后续 adapter 的 harness-neutral manifest，会记录 organization 元数据、标准化角色、阶段、catalog 和 marketplace artifact 路径、harness 资产路径和统一验证命令。
 
 生成的 `.tpan-opt-co-worker/workflow.schema.json` 是面向 workflow 编写工具、编辑器和后续 Web 控制台表单生成的 JSON Schema。
 
-生成的 `.tpan-opt-co-worker/console/index.html` 是可直接在浏览器打开的静态 workflow console，用于查看 workflow 标识、organization team/policy 元数据、角色归属、阶段顺序、manual/command gate 分布，包含带标准化 workflow JSON、schema 路径、复制和下载入口的 Workflow Designer 种子面板，并展示 run summary 状态统计、可按状态筛选的 run history、每次 run 的 `evidence.json` 和 `summary.md` 直达链接，以及匹配筛选条件的每次 run gate details；gate details 会在可用时展示 command 文本、exit code、审批人、备注和安全 evidence links；`.tpan-opt-co-worker/console/runs.js` 为默认数据源，`.tpan-opt-co-worker/console/runs.json` 作为 fallback。
+生成的 `.tpan-opt-co-worker/catalog.json`、`.tpan-opt-co-worker/marketplace.json` 和 `.tpan-opt-co-worker/console/catalog.js` 会暴露组织级 workflow templates、policy packs、可复用 teams，以及面向 skills、MCP servers 和 hooks 的 marketplace packages。
+
+生成的 `.tpan-opt-co-worker/console/index.html` 是可直接在浏览器打开的静态 workflow console，用于查看 workflow 标识、organization team/policy 元数据、角色归属、阶段顺序、manual/command gate 分布，包含带标准化 workflow JSON、schema 路径、复制和下载入口的 Workflow Designer 种子面板，并展示可复用 templates/policies/teams 的 organization catalog 面板、marketplace package discovery、run summary 状态统计、可按状态筛选的 run history、每次 run 的 `evidence.json` 和 `summary.md` 直达链接，以及匹配筛选条件的每次 run gate details；gate details 会在可用时展示 command 文本、exit code、审批人、备注和安全 evidence links；`.tpan-opt-co-worker/console/runs.js` 为默认数据源，`.tpan-opt-co-worker/console/runs.json` 作为 fallback。
 
 生成的本地 runner 会读取 manifest、调用验证脚本、写出标准 run 目录、更新 `.tpan-opt-co-worker/runs/index.json`，并把 run index 和 gate details 镜像到 `.tpan-opt-co-worker/console/runs.json` 和 `.tpan-opt-co-worker/console/runs.js` 供静态 console 使用：
 
@@ -629,9 +634,9 @@ Workflow 自定义 presets：
 - [x] 增加生成式 web console gate evidence metadata。
 - [x] 增加生成式 web console run artifact links。
 - [x] 增加 skills、MCP servers 和 hooks 的 marketplace catalog discovery。
-- [ ] 增加用于流程设计和执行追踪的 Web 控制台。
-- [ ] 增加组织级模板、策略和可复用 agent team。
-- [ ] 增加 skills、MCP servers 和 hooks 的 marketplace 式分发。
+- [x] 增加用于流程设计和执行追踪的 Web 控制台。
+- [x] 增加组织级模板、策略和可复用 agent team。
+- [x] 增加 skills、MCP servers 和 hooks 的 marketplace 式分发。
 
 ## 设计原则
 

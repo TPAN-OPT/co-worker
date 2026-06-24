@@ -1,5 +1,10 @@
 import { GATE_PRESETS, createGatePresetRegistry, resolveGatePreset } from './gate-presets.js'
 import {
+  renderCatalogJson,
+  renderCatalogScript,
+  renderMarketplaceJson
+} from './catalog-renderer.js'
+import {
   renderClaudeAgentMarkdown,
   renderClaudeMarkdown
 } from './claude-renderer.js'
@@ -136,6 +141,18 @@ export function compileWorkflow(input) {
     {
       path: '.tpan-opt-co-worker/workflow.schema.json',
       content: renderWorkflowSchema()
+    },
+    {
+      path: '.tpan-opt-co-worker/catalog.json',
+      content: renderCatalogJson()
+    },
+    {
+      path: '.tpan-opt-co-worker/marketplace.json',
+      content: renderMarketplaceJson()
+    },
+    {
+      path: '.tpan-opt-co-worker/console/catalog.js',
+      content: renderCatalogScript()
     },
     {
       path: '.tpan-opt-co-worker/console/index.html',

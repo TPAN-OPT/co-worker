@@ -3,6 +3,8 @@ export function renderWorkflowManifest(workflow) {
   const manifest = {
     schemaVersion: 'tpan-opt-co-worker.workflow.manifest/v1',
     schema: '.tpan-opt-co-worker/workflow.schema.json',
+    catalog: '.tpan-opt-co-worker/catalog.json',
+    marketplace: '.tpan-opt-co-worker/marketplace.json',
     workflow: {
       name: workflow.name,
       version: workflow.version
@@ -44,7 +46,8 @@ export function renderWorkflowManifest(workflow) {
       webConsole: {
         index: '.tpan-opt-co-worker/console/index.html',
         runs: '.tpan-opt-co-worker/console/runs.json',
-        runsScript: '.tpan-opt-co-worker/console/runs.js'
+        runsScript: '.tpan-opt-co-worker/console/runs.js',
+        catalogScript: '.tpan-opt-co-worker/console/catalog.js'
       }
     },
     verification: {

@@ -390,7 +390,10 @@ describe('compileWorkflow', () => {
       '.gitlab-ci.yml',
       '.opencode/agents/engineer.md',
       '.opencode/agents/planner.md',
+      '.tpan-opt-co-worker/catalog.json',
+      '.tpan-opt-co-worker/console/catalog.js',
       '.tpan-opt-co-worker/console/index.html',
+      '.tpan-opt-co-worker/marketplace.json',
       '.tpan-opt-co-worker/workflow.manifest.json',
       '.tpan-opt-co-worker/workflow.schema.json',
       'AGENTS.md',
@@ -456,6 +459,12 @@ describe('compileWorkflow', () => {
       parsedManifest.harnesses.webConsole.runsScript,
       '.tpan-opt-co-worker/console/runs.js'
     )
+    assert.equal(
+      parsedManifest.harnesses.webConsole.catalogScript,
+      '.tpan-opt-co-worker/console/catalog.js'
+    )
+    assert.equal(parsedManifest.catalog, '.tpan-opt-co-worker/catalog.json')
+    assert.equal(parsedManifest.marketplace, '.tpan-opt-co-worker/marketplace.json')
     assert.deepEqual(parsedManifest.verification, {
       command: 'node scripts/verify-workflow.mjs',
       localRunDir: '.tpan-opt-co-worker/runs/local'
@@ -491,6 +500,14 @@ describe('compileWorkflow', () => {
     assert.match(webConsole.content, /copyWorkflowJson/)
     assert.match(webConsole.content, /\.tpan-opt-co-worker\/workflow\.schema\.json/)
     assert.match(webConsole.content, /download="opt\.workflow\.json"/)
+    assert.match(webConsole.content, /Organization Catalog/)
+    assert.match(webConsole.content, /Reusable Teams/)
+    assert.match(webConsole.content, /Policy Packs/)
+    assert.match(webConsole.content, /Marketplace Packages/)
+    assert.match(webConsole.content, /skill:tdd-workflow/)
+    assert.match(webConsole.content, /mcp:context7/)
+    assert.match(webConsole.content, /hook:workflow-preflight/)
+    assert.match(webConsole.content, /catalog\.js/)
     assert.match(webConsole.content, /renderGateDetails/)
     assert.match(webConsole.content, /runs\.json/)
     assert.match(webConsole.content, /runs\.js/)
@@ -528,6 +545,26 @@ describe('compileWorkflow', () => {
     const runList = outputs.find((output) => output.path === 'scripts/list-runs.mjs')
     assert.ok(runList.content.includes('No TPAN-OPT/CO-WORKER runs found'))
     assert.match(runList.content, /index\.json/)
+
+    const catalog = outputs.find((output) => output.path === '.tpan-opt-co-worker/catalog.json')
+    const parsedCatalog = JSON.parse(catalog.content)
+    assert.equal(parsedCatalog.templates[0].id, 'production-feature')
+    assert.equal(parsedCatalog.policies[0].id, 'quality-standard')
+    assert.equal(parsedCatalog.teams[0].id, 'product-delivery')
+    assert.equal(parsedCatalog.marketplace[0].id, 'skill:tdd-workflow')
+
+    const marketplace = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/marketplace.json'
+    )
+    const parsedMarketplace = JSON.parse(marketplace.content)
+    assert.equal(parsedMarketplace.marketplace[0].id, 'skill:tdd-workflow')
+
+    const catalogScript = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/catalog.js'
+    )
+    assert.match(catalogScript.content, /window\.TPAN_OPT_CATALOG/)
+    assert.match(catalogScript.content, /product-delivery/)
+    assert.match(catalogScript.content, /hook:workflow-preflight/)
 
     const cursorRule = outputs.find(
       (output) => output.path === '.cursor/rules/tpan-opt-co-worker.mdc'

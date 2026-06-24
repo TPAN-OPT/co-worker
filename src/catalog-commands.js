@@ -1,7 +1,12 @@
 import { basename, dirname, resolve } from 'node:path'
 import { listReusableAgentTeams } from './agent-team-catalog.js'
+import {
+  createCatalog,
+  createPresetSummary,
+  renderCatalogJson,
+  renderMarketplaceJson
+} from './catalog-renderer.js'
 import { writeCompiledOutputs } from './file-system.js'
-import { GATE_PRESETS } from './gate-presets.js'
 import { listMarketplacePackages } from './marketplace-catalog.js'
 import { listOrganizationPolicyPacks } from './policy-catalog.js'
 import { listWorkflowTemplates } from './workflow-template.js'
@@ -9,7 +14,7 @@ import { listWorkflowTemplates } from './workflow-template.js'
 export async function runCatalog(args) {
   const options = parseCatalogArgs(args)
   const catalog = createCatalog()
-  const content = `${JSON.stringify(catalog, null, 2)}\n`
+  const content = renderCatalogJson()
 
   if (options.out) {
     const outputPath = resolve(options.out)
@@ -121,7 +126,7 @@ export async function runMarketplace(args) {
     outDescription: 'Write marketplace catalog JSON to a file.'
   })
   const marketplace = listMarketplacePackages()
-  const content = `${JSON.stringify({ marketplace }, null, 2)}\n`
+  const content = renderMarketplaceJson()
 
   if (options.out) {
     const outputPath = resolve(options.out)
@@ -287,23 +292,4 @@ function requireNextValue(args, index, name) {
   }
 
   return value
-}
-
-function createCatalog() {
-  return {
-    presets: createPresetSummary(),
-    templates: listWorkflowTemplates(),
-    policies: listOrganizationPolicyPacks(),
-    teams: listReusableAgentTeams(),
-    marketplace: listMarketplacePackages()
-  }
-}
-
-function createPresetSummary() {
-  return Object.entries(GATE_PRESETS).map(([id, preset]) => ({
-    id,
-    type: preset.type,
-    description: preset.description,
-    command: preset.command
-  }))
 }
