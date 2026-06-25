@@ -12,6 +12,7 @@ import {
 import { renderGithubAction, renderGitlabCi } from './ci-renderer.js'
 import { renderCursorRule } from './cursor-renderer.js'
 import { renderLocalRunnerScript } from './local-runner-renderer.js'
+import { renderOrchestratorScript } from './orchestrator-renderer.js'
 import { renderWorkflowManifest } from './manifest-renderer.js'
 import { renderRunListScript } from './run-list-renderer.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
@@ -178,6 +179,17 @@ export function compileWorkflow(input) {
       content: renderEmptyRunsData()
     },
     {
+      // Empty orchestration state so the console loads cleanly before any
+      // orchestrate-workflow run exists. The orchestrator overwrites both files
+      // once a run records stage state.
+      path: '.tpan-opt-co-worker/console/orchestration.js',
+      content: renderEmptyOrchestrationScript()
+    },
+    {
+      path: '.tpan-opt-co-worker/console/orchestration.json',
+      content: renderEmptyOrchestrationData()
+    },
+    {
       path: 'scripts/run-workflow.mjs',
       content: renderLocalRunnerScript()
     },
@@ -188,6 +200,10 @@ export function compileWorkflow(input) {
     {
       path: 'scripts/verify-workflow.mjs',
       content: renderVerifyScript(workflow)
+    },
+    {
+      path: 'scripts/orchestrate-workflow.mjs',
+      content: renderOrchestratorScript()
     }
   ]
 }
@@ -200,6 +216,16 @@ function renderEmptyRunsScript() {
 
 function renderEmptyRunsData() {
   return `${JSON.stringify(EMPTY_RUN_HISTORY, null, 2)}\n`
+}
+
+const EMPTY_ORCHESTRATION = { current: null }
+
+function renderEmptyOrchestrationScript() {
+  return `window.TPAN_OPT_ORCHESTRATION = ${JSON.stringify(EMPTY_ORCHESTRATION, null, 2)}\n`
+}
+
+function renderEmptyOrchestrationData() {
+  return `${JSON.stringify(EMPTY_ORCHESTRATION, null, 2)}\n`
 }
 
 function normalizeRoles(roles) {

@@ -46,6 +46,54 @@ describe('generated web console runtime', () => {
     )
   })
 
+  it('renders orchestration stage state, work order, and invocations', () => {
+    const outputs = compileWorkflow(webConsoleWorkflow())
+    const webConsole = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/index.html'
+    )
+    const harness = createWebConsoleHarness(
+      { runs: [], details: {} },
+      {
+        current: {
+          status: 'blocked',
+          runId: 'orch-1',
+          currentStage: 'verify',
+          stages: [{ id: 'verify', owner: 'lead', status: 'current' }],
+          invocations: [{ stageId: 'verify', role: 'lead', status: 'completed', exitCode: 0 }],
+          workOrder: {
+            stageId: 'verify',
+            owner: 'lead',
+            pendingGates: [{ id: 'human_approval', type: 'manual' }],
+            nextAction: 'Attach approval evidence for manual gate(s): human_approval.'
+          }
+        }
+      }
+    )
+
+    vm.runInNewContext(extractConsoleScript(webConsole.content), harness.context)
+
+    const html = harness.elements.orchestration.innerHTML
+    assert.match(html, /orch-1/)
+    assert.match(html, /Work Order · verify/)
+    assert.match(html, /human_approval/)
+    assert.match(html, /Agent Invocations/)
+    assert.match(html, /Attach approval evidence/)
+  })
+
+  it('emits empty orchestration placeholders for a clean first load', () => {
+    const outputs = compileWorkflow(webConsoleWorkflow())
+    const script = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/orchestration.js'
+    )
+    const data = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/orchestration.json'
+    )
+
+    assert.ok(script)
+    assert.match(script.content, /window\.TPAN_OPT_ORCHESTRATION = /)
+    assert.deepEqual(JSON.parse(data.content), { current: null })
+  })
+
   it('emits empty run history placeholders for a clean first load', () => {
     const outputs = compileWorkflow(webConsoleWorkflow())
     const runsScript = outputs.find(
@@ -91,11 +139,12 @@ function extractConsoleScript(content) {
   return match[1]
 }
 
-function createWebConsoleHarness(runData) {
+function createWebConsoleHarness(runData, orchestrationData) {
   const elements = {
     'run-summary': createElement(),
     'run-history': createElement(),
-    'gate-details': createElement()
+    'gate-details': createElement(),
+    orchestration: createElement()
   }
   const buttons = Object.fromEntries(
     ['all', 'passed', 'pending', 'failed'].map((status) => [
@@ -116,6 +165,7 @@ function createWebConsoleHarness(runData) {
       navigator: {},
       window: {
         TPAN_OPT_RUNS: runData,
+        TPAN_OPT_ORCHESTRATION: orchestrationData,
         isSecureContext: false,
         setTimeout: () => {}
       },

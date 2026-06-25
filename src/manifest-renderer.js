@@ -43,11 +43,17 @@ export function renderWorkflowManifest(workflow) {
         listRunsScript: 'scripts/list-runs.mjs',
         runIndex: '.tpan-opt-co-worker/runs/index.json'
       },
+      orchestrator: {
+        script: 'scripts/orchestrate-workflow.mjs',
+        stateDir: '.tpan-opt-co-worker/orchestrations'
+      },
       webConsole: {
         index: '.tpan-opt-co-worker/console/index.html',
         runs: '.tpan-opt-co-worker/console/runs.json',
         runsScript: '.tpan-opt-co-worker/console/runs.js',
-        catalogScript: '.tpan-opt-co-worker/console/catalog.js'
+        catalogScript: '.tpan-opt-co-worker/console/catalog.js',
+        orchestration: '.tpan-opt-co-worker/console/orchestration.json',
+        orchestrationScript: '.tpan-opt-co-worker/console/orchestration.js'
       }
     },
     verification: {

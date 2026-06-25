@@ -531,6 +531,8 @@ describe('compileWorkflow', () => {
       '.tpan-opt-co-worker/catalog.json',
       '.tpan-opt-co-worker/console/catalog.js',
       '.tpan-opt-co-worker/console/index.html',
+      '.tpan-opt-co-worker/console/orchestration.js',
+      '.tpan-opt-co-worker/console/orchestration.json',
       '.tpan-opt-co-worker/console/runs.js',
       '.tpan-opt-co-worker/console/runs.json',
       '.tpan-opt-co-worker/marketplace.json',
@@ -540,6 +542,7 @@ describe('compileWorkflow', () => {
       'CLAUDE.md',
       'opencode.json',
       'scripts/list-runs.mjs',
+      'scripts/orchestrate-workflow.mjs',
       'scripts/run-workflow.mjs',
       'scripts/verify-workflow.mjs'
     ])
