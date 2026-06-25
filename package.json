@@ -25,6 +25,8 @@
   },
   "files": [
     "src",
+    "scripts",
+    "test",
     "examples",
     "README.md",
     "README.zh-CN.md",
@@ -41,7 +43,7 @@
     "verify": "node scripts/verify.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "license": "MIT"
 }

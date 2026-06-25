@@ -27,7 +27,10 @@ try {
     'README.zh-CN.md',
     'examples/opt.workflow.json',
     'package.json',
-    'src/cli.js'
+    'scripts/check-coverage.mjs',
+    'scripts/verify.mjs',
+    'src/cli.js',
+    'test/cli.test.js'
   ]
 
   const missingFiles = requiredFiles.filter((file) => !files.has(file))

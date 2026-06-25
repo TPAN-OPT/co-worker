@@ -10,6 +10,40 @@ const execFileAsync = promisify(execFile)
 const cliPath = resolve('src/cli.js')
 
 describe('catalog CLI', () => {
+  it('prints help for catalog-style commands', async () => {
+    const commands = ['catalog', 'presets', 'templates', 'policies', 'teams', 'marketplace']
+
+    for (const command of commands) {
+      const { stdout } = await execFileAsync('node', [cliPath, command, '--help'])
+
+      assert.match(stdout, new RegExp(`tpan-opt-co-worker ${command}`))
+      assert.match(stdout, /--json/)
+      if (command === 'marketplace') {
+        assert.match(stdout, /--out marketplace\.json/)
+        assert.doesNotMatch(stdout, /--out catalog\.json/)
+      }
+    }
+  })
+
+  it('rejects unknown and incomplete catalog-style options', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'catalog', '--bogus']),
+      /Unknown catalog option "--bogus"/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'catalog', '--out']),
+      /--out requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'marketplace', '--out']),
+      /--out requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'teams', '--bogus']),
+      /Unknown teams option "--bogus"/
+    )
+  })
+
   it('lists built-in gate presets as text', async () => {
     const { stdout } = await execFileAsync('node', [cliPath, 'presets'])
 
@@ -40,6 +74,7 @@ describe('catalog CLI', () => {
 
     assert.match(stdout, /Workflow templates/)
     assert.match(stdout, /production-feature/)
+    assert.match(stdout, /minimal/)
     assert.match(stdout, /Planner, engineer, reviewer, and release manager/)
   })
 
@@ -54,6 +89,13 @@ describe('catalog CLI', () => {
         description:
           'Planner, engineer, reviewer, and release manager workflow for verified product delivery.',
         defaultWorkflowName: 'production-feature-workflow'
+      },
+      {
+        id: 'minimal',
+        name: 'Minimal Evidence Workflow',
+        description:
+          'Language-neutral starter workflow with manual planning, verification, and approval gates.',
+        defaultWorkflowName: 'minimal-evidence-workflow'
       }
     ])
   })
@@ -153,7 +195,7 @@ describe('catalog CLI', () => {
 
     assert.ok(stdout.includes('TPAN-OPT/CO-WORKER catalog'))
     assert.match(stdout, /Presets: 5/)
-    assert.match(stdout, /Templates: 1/)
+    assert.match(stdout, /Templates: 2/)
     assert.match(stdout, /Policies: 3/)
     assert.match(stdout, /Teams: 3/)
     assert.match(stdout, /Marketplace: 5/)

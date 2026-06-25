@@ -52,7 +52,7 @@ export function renderClaudeAgentMarkdown(roleId, role, workflow) {
 
   return `---
 name: ${roleId}
-description: ${role.description}
+description: ${formatYamlString(role.description)}
 ---
 
 # ${roleId}
@@ -101,4 +101,8 @@ function formatGateList(gates) {
       return `\`${gate.id}\` (${gate.type})${command}`
     })
     .join(', ')
+}
+
+function formatYamlString(value) {
+  return JSON.stringify(value)
 }

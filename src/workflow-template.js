@@ -1,4 +1,5 @@
 const PRODUCTION_FEATURE_TEMPLATE_ID = 'production-feature'
+const MINIMAL_TEMPLATE_ID = 'minimal'
 
 const WORKFLOW_TEMPLATE_CATALOG = [
   {
@@ -7,6 +8,13 @@ const WORKFLOW_TEMPLATE_CATALOG = [
     description:
       'Planner, engineer, reviewer, and release manager workflow for verified product delivery.',
     defaultWorkflowName: 'production-feature-workflow'
+  },
+  {
+    id: MINIMAL_TEMPLATE_ID,
+    name: 'Minimal Evidence Workflow',
+    description:
+      'Language-neutral starter workflow with manual planning, verification, and approval gates.',
+    defaultWorkflowName: 'minimal-evidence-workflow'
   }
 ]
 
@@ -17,6 +25,10 @@ export function listWorkflowTemplates() {
 export function createWorkflowFromTemplate(templateId, options = {}) {
   if (templateId === PRODUCTION_FEATURE_TEMPLATE_ID) {
     return createOptWorkflowTemplate(options)
+  }
+
+  if (templateId === MINIMAL_TEMPLATE_ID) {
+    return createMinimalWorkflowTemplate(options)
   }
 
   throw new Error(`Unknown workflow template "${templateId}"`)
@@ -130,6 +142,63 @@ export function createOptWorkflowTemplate(options = {}) {
             id: 'human_approval',
             type: 'manual',
             description: 'A human lead approved release or external publication.'
+          }
+        ]
+      }
+    ]
+  }
+}
+
+export function createMinimalWorkflowTemplate(options = {}) {
+  const workflowName = options.name || 'minimal-evidence-workflow'
+  const organization = normalizeOrganizationOption(options.organization)
+
+  return {
+    name: workflowName,
+    version: '1.0.0',
+    ...(organization ? { organization } : {}),
+    roles: {
+      lead: {
+        description:
+          'Owns planning, local verification evidence, and final human approval for a lightweight workflow.',
+        skills: ['verification-loop'],
+        permissions: ['read_repo', 'write_docs']
+      }
+    },
+    stages: [
+      {
+        id: 'plan',
+        owner: 'lead',
+        output: 'implementation_plan',
+        gates: [
+          {
+            id: 'scope_confirmed',
+            type: 'manual',
+            description: 'Scope, constraints, and expected evidence are confirmed.'
+          }
+        ]
+      },
+      {
+        id: 'verify',
+        owner: 'lead',
+        output: 'verification_evidence',
+        gates: [
+          {
+            id: 'local_checks_recorded',
+            type: 'manual',
+            description: 'Project-appropriate local checks are recorded as evidence.'
+          }
+        ]
+      },
+      {
+        id: 'approve',
+        owner: 'lead',
+        output: 'approval_record',
+        gates: [
+          {
+            id: 'human_approval',
+            type: 'manual',
+            description: 'A human lead approved the result before release or publication.'
           }
         ]
       }

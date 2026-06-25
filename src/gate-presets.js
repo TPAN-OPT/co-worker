@@ -26,6 +26,8 @@ export const GATE_PRESETS = Object.freeze({
   })
 })
 
+const GATE_PRESET_FIELDS = ['type', 'description', 'command']
+
 export function createGatePresetRegistry(customPresets = {}) {
   const normalizedCustomPresets = normalizeCustomGatePresets(customPresets)
 
@@ -69,6 +71,7 @@ function normalizeCustomGatePreset(presetId, preset) {
     throw new Error(`Custom gate preset "${presetId}" must be an object`)
   }
 
+  assertKnownFields(preset, GATE_PRESET_FIELDS, `Custom gate preset "${presetId}"`)
   const type =
     typeof preset.type === 'string' && preset.type.trim() !== ''
       ? preset.type.trim()
@@ -99,4 +102,12 @@ function normalizeCustomGatePreset(presetId, preset) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function assertKnownFields(value, allowedFields, label) {
+  for (const field of Object.keys(value)) {
+    if (!allowedFields.includes(field)) {
+      throw new Error(`${label} contains unknown field "${field}"`)
+    }
+  }
 }

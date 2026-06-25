@@ -99,6 +99,52 @@ describe('pack-smoke script', () => {
       await rm(binDir, { recursive: true, force: true })
     }
   })
+
+  it('installs the packaged CLI and runs core commands from the binary', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-package-e2e-'))
+    const installDir = join(targetDir, 'install')
+    const projectDir = join(targetDir, 'project')
+
+    try {
+      await mkdir(installDir)
+      await mkdir(projectDir)
+      const packResult = await execFileAsync(
+        'npm',
+        ['pack', '--json', '--pack-destination', targetDir],
+        { cwd: resolve('.') }
+      )
+      const [packedPackage] = JSON.parse(packResult.stdout)
+      const tarballPath = join(targetDir, packedPackage.filename)
+
+      await execFileAsync('npm', ['install', tarballPath, '--ignore-scripts'], {
+        cwd: installDir
+      })
+
+      const binaryPath = join(installDir, 'node_modules', '.bin', 'tpan-opt-co-worker')
+      const help = await execFileAsync(binaryPath, ['--help'], { cwd: installDir })
+      assert.match(help.stdout, new RegExp('TPAN' + '-OPT/CO-WORKER'))
+
+      await execFileAsync(
+        binaryPath,
+        ['init', '--out', projectDir, '--name', 'packaged-workflow'],
+        { cwd: installDir }
+      )
+      await execFileAsync(
+        binaryPath,
+        ['validate', '--workflow', join(projectDir, 'opt.workflow.json')],
+        { cwd: installDir }
+      )
+      const compile = await execFileAsync(
+        binaryPath,
+        ['compile', '--workflow', join(projectDir, 'opt.workflow.json'), '--out', projectDir],
+        { cwd: installDir }
+      )
+
+      assert.match(compile.stdout, /Wrote .* files/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
 })
 
 async function createPackageFixture(options = {}) {
@@ -106,18 +152,31 @@ async function createPackageFixture(options = {}) {
   const includeChineseReadme = options.includeChineseReadme !== false
 
   await mkdir(join(targetDir, 'examples'), { recursive: true })
+  await mkdir(join(targetDir, 'scripts'), { recursive: true })
   await mkdir(join(targetDir, 'src'), { recursive: true })
+  await mkdir(join(targetDir, 'test'), { recursive: true })
   await writeFile(join(targetDir, 'LICENSE'), 'MIT\n')
   await writeFile(join(targetDir, 'README.md'), '# Package Fixture\n')
   await writeFile(join(targetDir, 'examples', 'opt.workflow.json'), '{}\n')
+  await writeFile(join(targetDir, 'scripts', 'check-coverage.mjs'), '#!/usr/bin/env node\n')
+  await writeFile(join(targetDir, 'scripts', 'verify.mjs'), '#!/usr/bin/env node\n')
   await writeFile(join(targetDir, 'src', 'cli.js'), '#!/usr/bin/env node\n')
+  await writeFile(join(targetDir, 'test', 'cli.test.js'), 'import "node:test"\n')
   await writeFile(
     join(targetDir, 'package.json'),
     JSON.stringify(
       {
         name: 'pack-fixture',
         version: '1.0.0',
-        files: ['src', 'examples', 'README.md', 'README.zh-CN.md', 'LICENSE']
+        files: [
+          'src',
+          'scripts',
+          'test',
+          'examples',
+          'README.md',
+          'README.zh-CN.md',
+          'LICENSE'
+        ]
       },
       null,
       2

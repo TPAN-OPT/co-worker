@@ -34,7 +34,7 @@ export function renderOpenCodeAgentMarkdown(roleId, role, workflow) {
     .join('\n\n')
 
   return `---
-description: ${role.description}
+description: ${formatYamlString(role.description)}
 mode: subagent
 permission:
   edit: ask
@@ -87,4 +87,8 @@ function formatGateList(gates) {
       return `\`${gate.id}\` (${gate.type})${command}`
     })
     .join(', ')
+}
+
+function formatYamlString(value) {
+  return JSON.stringify(value)
 }

@@ -1,3 +1,5 @@
+import { IDENTIFIER_PATTERN_SOURCE } from './identifier-pattern.js'
+
 export function renderWorkflowSchema() {
   const schema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -12,6 +14,20 @@ export function renderWorkflowSchema() {
       organization: {
         type: 'object',
         additionalProperties: false,
+        anyOf: [
+          {
+            required: ['team']
+          },
+          {
+            required: ['policies'],
+            properties: {
+              policies: {
+                ...stringArray(),
+                minItems: 1
+              }
+            }
+          }
+        ],
         properties: {
           team: identifier('Reusable agent team id.'),
           policies: stringArray()
@@ -77,6 +93,28 @@ export function renderWorkflowSchema() {
             type: 'object',
             additionalProperties: false,
             required: ['id'],
+            allOf: [
+              {
+                if: {
+                  properties: {
+                    type: {
+                      const: 'command'
+                    }
+                  },
+                  required: ['type']
+                },
+                then: {
+                  anyOf: [
+                    {
+                      required: ['command']
+                    },
+                    {
+                      required: ['preset']
+                    }
+                  ]
+                }
+              }
+            ],
             properties: {
               id: identifier('Gate id.'),
               type: {
@@ -87,9 +125,7 @@ export function renderWorkflowSchema() {
               description: {
                 type: 'string'
               },
-              command: {
-                type: 'string'
-              }
+              command: nonEmptyString('Command to run for command gates.')
             }
           }
         ],
@@ -102,7 +138,21 @@ export function renderWorkflowSchema() {
       gatePreset: {
         type: 'object',
         additionalProperties: false,
-        required: ['type'],
+        allOf: [
+          {
+            if: {
+              properties: {
+                type: {
+                  const: 'command'
+                }
+              },
+              required: ['type']
+            },
+            then: {
+              required: ['command']
+            }
+          }
+        ],
         properties: {
           type: {
             type: 'string',
@@ -111,9 +161,7 @@ export function renderWorkflowSchema() {
           description: {
             type: 'string'
           },
-          command: {
-            type: 'string'
-          }
+          command: nonEmptyString('Command to run for command presets.')
         }
       }
     }
@@ -133,7 +181,7 @@ function nonEmptyString(description) {
 function identifier(description) {
   return {
     type: 'string',
-    pattern: '^[A-Za-z][A-Za-z0-9_-]*$',
+    pattern: IDENTIFIER_PATTERN_SOURCE,
     description
   }
 }

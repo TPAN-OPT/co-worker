@@ -11,6 +11,23 @@ import { compileWorkflow } from '../src/compiler.js'
 const execFileAsync = promisify(execFile)
 
 describe('generated verify-workflow script', () => {
+  it('prints help for generated verifier options', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const { stdout } = await execFileAsync('node', [scriptPath, '--help'])
+
+      assert.match(stdout, /--manual-evidence manual-evidence\.json/)
+      assert.match(stdout, /--report evidence\.json/)
+      assert.match(stdout, /--run-dir/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('runs command gates and prints manual gates', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
 
@@ -18,7 +35,16 @@ describe('generated verify-workflow script', () => {
       const scriptPath = await writeVerifyScript(targetDir, {
         command: 'node -e "process.exit(0)"'
       })
-      const { stdout } = await execFileAsync('node', [scriptPath])
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
 
       assert.match(stdout, /command:unit_tests_pass/)
       assert.match(stdout, /PASS/)
@@ -36,7 +62,16 @@ describe('generated verify-workflow script', () => {
         preset: 'node:test',
         command: 'node -e "process.exit(0)"'
       })
-      const { stdout } = await execFileAsync('node', [scriptPath])
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
 
       assert.match(stdout, /command:unit_tests_pass/)
       assert.match(stdout, /PASS/)
@@ -59,7 +94,16 @@ describe('generated verify-workflow script', () => {
         },
         preset: 'team:custom-test'
       })
-      const { stdout } = await execFileAsync('node', [scriptPath])
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
 
       assert.match(stdout, /command:unit_tests_pass/)
       assert.match(stdout, /PASS command:unit_tests_pass/)
@@ -94,11 +138,21 @@ describe('generated verify-workflow script', () => {
       })
       const reportPath = join(targetDir, 'evidence.json')
 
-      await execFileAsync('node', [scriptPath, '--report', reportPath])
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--report', reportPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          assert.match(
+            `${error.stdout}${error.stderr}`,
+            /requires every command and manual gate/
+          )
+          return true
+        }
+      )
 
       const report = JSON.parse(await readFile(reportPath, 'utf8'))
       assert.equal(report.workflow.name, 'verify-workflow')
-      assert.equal(report.passed, true)
+      assert.equal(report.passed, false)
       assert.equal(report.commandPassed, true)
       assert.equal(report.allGatesPassed, false)
       assert.deepEqual(report.commandGates[0], {
@@ -117,6 +171,37 @@ describe('generated verify-workflow script', () => {
         description: 'Human lead approved the release.',
         status: 'pending'
       })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits non-zero when manual gates remain pending even if command gates pass', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const reportPath = join(targetDir, 'strict-pending-report.json')
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--report', reportPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          assert.match(
+            `${error.stdout}${error.stderr}`,
+            /requires every command and manual gate/
+          )
+          return true
+        }
+      )
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.passed, false)
+      assert.equal(report.commandPassed, true)
+      assert.equal(report.allGatesPassed, false)
+      assert.equal(report.manualGates[0].status, 'pending')
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
@@ -178,6 +263,7 @@ describe('generated verify-workflow script', () => {
       ])
 
       const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.passed, true)
       assert.equal(report.commandPassed, true)
       assert.equal(report.allGatesPassed, true)
       assert.deepEqual(report.manualGates[0], {
@@ -192,6 +278,290 @@ describe('generated verify-workflow script', () => {
           links: ['https://example.com/review/1']
         }
       })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('treats manual evidence without an approvedBy field as pending', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const reportPath = join(targetDir, 'unsigned-evidence-report.json')
+      const manualEvidencePath = join(targetDir, 'manual-evidence.json')
+      await writeFile(
+        manualEvidencePath,
+        JSON.stringify({
+          gates: {
+            human_approval: {
+              note: 'Looks fine to me.'
+            }
+          }
+        })
+      )
+
+      await assert.rejects(
+        () =>
+          execFileAsync('node', [
+            scriptPath,
+            '--manual-evidence',
+            manualEvidencePath,
+            '--report',
+            reportPath
+          ]),
+        (error) => {
+          assert.equal(error.code, 1)
+          assert.match(
+            `${error.stdout}${error.stderr}`,
+            /missing a non-empty "approvedBy" field/
+          )
+          return true
+        }
+      )
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.allGatesPassed, false)
+      assert.equal(report.manualGates[0].status, 'pending')
+      assert.deepEqual(report.manualGates[0].evidence, {
+        note: 'Looks fine to me.'
+      })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('runs command gates even when an earlier manual gate is pending', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeCustomVerifyScript(targetDir, {
+        name: 'pending-manual-workflow',
+        version: '1.0.0',
+        roles: {
+          lead: {
+            skills: ['release-management'],
+            permissions: ['approve']
+          }
+        },
+        stages: [
+          {
+            id: 'approve',
+            owner: 'lead',
+            gates: [
+              {
+                id: 'human_approval',
+                type: 'manual',
+                description: 'Human lead approved downstream work.'
+              }
+            ]
+          },
+          {
+            id: 'deploy',
+            owner: 'lead',
+            gates: [
+              {
+                id: 'deploy_check',
+                type: 'command',
+                command: 'node -e "console.log(\\"DEPLOY_CHECK_RAN\\")"'
+              }
+            ]
+          }
+        ]
+      })
+      const reportPath = join(targetDir, 'pending-manual-report.json')
+      let stdout = ''
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--report', reportPath]),
+        (error) => {
+          assert.equal(error.code, 1)
+          stdout = error.stdout
+          return true
+        }
+      )
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.match(stdout, /DEPLOY_CHECK_RAN/)
+      assert.equal(report.commandPassed, true)
+      assert.equal(report.allGatesPassed, false)
+      assert.deepEqual(report.commandGates[0], {
+        stageId: 'deploy',
+        id: 'deploy_check',
+        preset: '',
+        command: 'node -e "console.log(\\"DEPLOY_CHECK_RAN\\")"',
+        description: '',
+        status: 'passed',
+        exitCode: 0
+      })
+      assert.equal(report.manualGates[0].status, 'pending')
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('skips downstream command gates when an earlier command gate fails', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeCustomVerifyScript(targetDir, {
+        name: 'failed-command-blocking-workflow',
+        version: '1.0.0',
+        roles: {
+          lead: {
+            skills: ['verification-loop'],
+            permissions: ['run_checks']
+          }
+        },
+        stages: [
+          {
+            id: 'check',
+            owner: 'lead',
+            gates: [
+              {
+                id: 'first_check',
+                type: 'command',
+                command: 'node -e "process.exit(7)"'
+              }
+            ]
+          },
+          {
+            id: 'publish',
+            owner: 'lead',
+            gates: [
+              {
+                id: 'publish_check',
+                type: 'command',
+                command: 'node -e "console.log(\\"PUBLISH_CHECK_RAN\\")"'
+              }
+            ]
+          }
+        ]
+      })
+      const reportPath = join(targetDir, 'failed-command-report.json')
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--report', reportPath]),
+        (error) => {
+          assert.equal(error.code, 7)
+          assert.doesNotMatch(`${error.stdout}${error.stderr}`, /PUBLISH_CHECK_RAN/)
+          return true
+        }
+      )
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.commandGates[0].status, 'failed')
+      assert.equal(report.commandGates[0].exitCode, 7)
+      assert.deepEqual(report.commandGates[1], {
+        stageId: 'publish',
+        id: 'publish_check',
+        preset: '',
+        command: 'node -e "console.log(\\"PUBLISH_CHECK_RAN\\")"',
+        description: '',
+        status: 'skipped',
+        exitCode: null,
+        blockedBy: 'check.first_check'
+      })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('requires stage-scoped evidence for duplicate manual gate ids', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeCustomVerifyScript(targetDir, {
+        name: 'duplicate-manual-gates',
+        version: '1.0.0',
+        roles: {
+          lead: {
+            skills: ['release-management'],
+            permissions: ['approve']
+          }
+        },
+        stages: [
+          {
+            id: 'review',
+            owner: 'lead',
+            gates: [{ id: 'human_approval', type: 'manual' }]
+          },
+          {
+            id: 'ship',
+            owner: 'lead',
+            gates: [{ id: 'human_approval', type: 'manual' }]
+          }
+        ]
+      })
+      const reportPath = join(targetDir, 'duplicate-report.json')
+      const manualEvidencePath = join(targetDir, 'manual-evidence.json')
+      await writeFile(
+        manualEvidencePath,
+        JSON.stringify({
+          gates: {
+            human_approval: {
+              approvedBy: 'owner@example.com'
+            },
+            'review.human_approval': {
+              approvedBy: 'reviewer@example.com'
+            }
+          }
+        })
+      )
+
+      await assert.rejects(
+        () =>
+          execFileAsync('node', [
+            scriptPath,
+            '--manual-evidence',
+            manualEvidencePath,
+            '--report',
+            reportPath
+          ]),
+        /requires every command and manual gate/
+      )
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.manualGates[0].stageId, 'review')
+      assert.equal(report.manualGates[0].status, 'passed')
+      assert.deepEqual(report.manualGates[0].evidence, {
+        approvedBy: 'reviewer@example.com'
+      })
+      assert.equal(report.manualGates[1].stageId, 'ship')
+      assert.equal(report.manualGates[1].status, 'pending')
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects malformed manual evidence files', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const invalidJsonPath = join(targetDir, 'invalid-json.json')
+      const arrayEvidencePath = join(targetDir, 'array-evidence.json')
+      const missingGatesPath = join(targetDir, 'missing-gates.json')
+      await writeFile(invalidJsonPath, '{')
+      await writeFile(arrayEvidencePath, '[]')
+      await writeFile(missingGatesPath, '{"manual":{}}')
+
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--manual-evidence', invalidJsonPath]),
+        /Expected property name|Unexpected end of JSON input/
+      )
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--manual-evidence', arrayEvidencePath]),
+        /--manual-evidence must point to a JSON object/
+      )
+      await assert.rejects(
+        () => execFileAsync('node', [scriptPath, '--manual-evidence', missingGatesPath]),
+        /--manual-evidence JSON must include a gates object/
+      )
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
@@ -273,6 +643,15 @@ async function writeVerifyScript(targetDir, commandGate) {
     ]
   }
 
+  const outputs = compileWorkflow(workflow)
+  const script = outputs.find((output) => output.path === 'scripts/verify-workflow.mjs')
+  const scriptPath = join(targetDir, 'verify-workflow.mjs')
+  await writeFile(scriptPath, script.content, 'utf8')
+  await chmod(scriptPath, 0o755)
+  return scriptPath
+}
+
+async function writeCustomVerifyScript(targetDir, workflow) {
   const outputs = compileWorkflow(workflow)
   const script = outputs.find((output) => output.path === 'scripts/verify-workflow.mjs')
   const scriptPath = join(targetDir, 'verify-workflow.mjs')

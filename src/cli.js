@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import {
   getReusableAgentTeam,
@@ -17,6 +17,7 @@ import {
 import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { getOrganizationPolicyPack } from './policy-catalog.js'
+import { policyComplianceGates } from './policy-gates.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
 import { createWorkflowFromTemplate } from './workflow-template.js'
 
@@ -102,10 +103,11 @@ async function runInit(args) {
         policies: policyIds
       }
     : null
-  const workflow = createWorkflowFromTemplate(template, {
+  const baseWorkflow = createWorkflowFromTemplate(template, {
     name: options.name,
     organization
   })
+  const workflow = withPolicyComplianceStage(baseWorkflow, policyComplianceGates(policyIds))
   const result = await writeCompiledOutputs(
     [
       {
@@ -121,17 +123,174 @@ async function runInit(args) {
     console.log(
       `Wrote workflow template ${template} for team ${team.id} (policies: ${policyIds.join(', ')}): ${result.written[0]}`
     )
-    return
-  }
-
-  if (policyIds.length > 0) {
+  } else if (policyIds.length > 0) {
     console.log(
       `Wrote workflow template ${template} (policies: ${policyIds.join(', ')}): ${result.written[0]}`
     )
+  } else {
+    console.log(`Wrote workflow template ${template}: ${result.written[0]}`)
+  }
+
+  await scaffoldPackageJson(workflow, targetDir)
+  printInitNextSteps(workflow, result.written[0])
+}
+
+function printInitNextSteps(workflow, workflowFile) {
+  const hasCommandGate = validateWorkflow(workflow).stages.some((stage) =>
+    stage.gates.some((gate) => gate.type === 'command')
+  )
+
+  console.log('')
+  console.log('Next steps:')
+  console.log(`  1. Compile harness assets: tpan-opt-co-worker compile --workflow ${workflowFile} --out .`)
+  if (hasCommandGate) {
+    console.log('  2. Replace the placeholder package.json scripts with your real checks.')
+    console.log('  3. Run verification: node scripts/verify-workflow.mjs')
+    console.log('  4. Attach manual approvals via --manual-evidence before release.')
+  } else {
+    console.log('  2. Run verification: node scripts/verify-workflow.mjs --manual-evidence manual-evidence.json')
+    console.log('  3. Record approver evidence (approvedBy) for each manual gate before release.')
+  }
+}
+
+// Injects a dedicated policy_compliance stage that enforces the automatable
+// rules contributed by the selected organization policies (for example a
+// dependency audit). Non-automatable rules stay advisory prompt text. The stage
+// is placed before the final stage so compliance runs ahead of release, and is
+// skipped when no policy contributes an enforceable gate or when a stage with
+// that id already exists.
+function withPolicyComplianceStage(workflow, complianceGates) {
+  if (complianceGates.length === 0) {
+    return workflow
+  }
+
+  if (workflow.stages.some((stage) => stage.id === 'policy_compliance')) {
+    return workflow
+  }
+
+  const complianceStage = {
+    id: 'policy_compliance',
+    owner: pickComplianceOwner(workflow),
+    output: 'policy_compliance_evidence',
+    gates: complianceGates
+  }
+
+  return {
+    ...workflow,
+    stages: insertBeforeLastStage(workflow.stages, complianceStage)
+  }
+}
+
+function pickComplianceOwner(workflow) {
+  const roleIds = Object.keys(workflow.roles)
+  return roleIds.includes('reviewer') ? 'reviewer' : roleIds[0]
+}
+
+function insertBeforeLastStage(stages, stage) {
+  if (stages.length === 0) {
+    return [stage]
+  }
+
+  return [...stages.slice(0, -1), stage, stages[stages.length - 1]]
+}
+
+// Templates such as production-feature gate on npm scripts (npm test,
+// npm run test:coverage). In a fresh repository those scripts do not exist,
+// and `npm` would otherwise climb to a parent package.json and run an
+// unrelated project's checks. Scaffold a local placeholder package.json so the
+// command gates resolve to this repository and fail honestly until the team
+// wires in real checks. Only written when absent so existing manifests are
+// never clobbered.
+async function scaffoldPackageJson(workflow, targetDir) {
+  const npmScripts = collectNpmScriptNames(workflow)
+
+  if (npmScripts.length === 0) {
     return
   }
 
-  console.log(`Wrote workflow template ${template}: ${result.written[0]}`)
+  if (await targetHasFile(targetDir, 'package.json')) {
+    return
+  }
+
+  await writeCompiledOutputs(
+    [
+      {
+        path: 'package.json',
+        content: renderStarterPackageJson(npmScripts)
+      }
+    ],
+    targetDir,
+    { force: false }
+  )
+
+  console.log(
+    `Scaffolded package.json with placeholder scripts (${npmScripts.join(', ')}). Replace them with your project's real checks before relying on the gates.`
+  )
+}
+
+function collectNpmScriptNames(workflow) {
+  const normalized = validateWorkflow(workflow)
+  const names = new Set()
+
+  for (const stage of normalized.stages) {
+    for (const gate of stage.gates) {
+      if (gate.type !== 'command') {
+        continue
+      }
+
+      const scriptName = npmScriptNameFromCommand(gate.command)
+      if (scriptName) {
+        names.add(scriptName)
+      }
+    }
+  }
+
+  return [...names]
+}
+
+function npmScriptNameFromCommand(command) {
+  if (/^npm\s+test\b/.test(command)) {
+    return 'test'
+  }
+
+  const runMatch = command.match(/^npm\s+run\s+([A-Za-z0-9:_-]+)\b/)
+  if (runMatch) {
+    return runMatch[1]
+  }
+
+  return null
+}
+
+function renderStarterPackageJson(scriptNames) {
+  const scripts = Object.fromEntries(
+    scriptNames.map((scriptName) => [
+      scriptName,
+      `echo "Configure the '${scriptName}' script for this repository (placeholder created by TPAN-OPT/CO-WORKER)." && exit 1`
+    ])
+  )
+
+  const manifest = {
+    private: true,
+    version: '0.0.0',
+    description:
+      'Scaffolded by TPAN-OPT/CO-WORKER. Replace the placeholder scripts with your project checks.',
+    scripts
+  }
+
+  return `${JSON.stringify(manifest, null, 2)}\n`
+}
+
+async function targetHasFile(targetDir, relativePath) {
+  try {
+    await access(resolve(targetDir, relativePath))
+    return true
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return false
+    }
+
+    throw error
+  }
 }
 
 async function runCompile(args) {
@@ -334,7 +493,7 @@ function parseSchemaArgs(args) {
 function parseInitArgs(args) {
   const options = {
     out: '.',
-    name: 'production-feature-workflow',
+    name: '',
     template: 'production-feature',
     templateSpecified: false,
     team: '',
@@ -527,7 +686,7 @@ function printHelp() {
   console.log(`TPAN-OPT/CO-WORKER
 
 Usage:
-  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name production-feature-workflow] [--force]
+  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
   tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
   tpan-opt-co-worker catalog [--json]
   tpan-opt-co-worker presets [--json]
@@ -557,14 +716,14 @@ function printInitHelp() {
   const defaultTeam = listReusableAgentTeams()[0].id
 
   console.log(`Usage:
-  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name production-feature-workflow] [--force]
+  tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
 
 Options:
   --out <dir>       Output repository directory. Defaults to current directory.
-  --template <id>   Workflow template id. Defaults to production-feature.
+  --template <id>   Workflow template id. Defaults to production-feature. Use minimal for language-neutral manual gates.
   --team <id>       Reusable agent team id. Uses the team's recommended template unless --template is set.
   --policy <id>     Organization policy pack id. Can be repeated.
-  --name <id>       Workflow name. Defaults to production-feature-workflow.
+  --name <id>       Workflow name. Defaults to the selected template's default name.
   --force           Overwrite an existing opt.workflow.json.
 
 Notes:

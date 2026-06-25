@@ -22,6 +22,62 @@ describe('CLI', () => {
     assert.match(stdout, /--template production-feature/)
     assert.match(stdout, /--team product-delivery/)
     assert.match(stdout, /--policy quality-standard/)
+    assert.match(stdout, /--name workflow-name/)
+  })
+
+  it('documents template-specific init default names', async () => {
+    const { stdout } = await execFileAsync('node', [cliPath, 'init', '--help'])
+
+    assert.match(stdout, /--name workflow-name/)
+    assert.match(stdout, /Defaults to the selected template's default name/)
+    assert.doesNotMatch(stdout, /\[--name production-feature-workflow\]/)
+  })
+
+  it('rejects unknown root commands with help', async () => {
+    const productName = ['TPAN', 'OPT/CO-WORKER'].join('-')
+
+    await assert.rejects(async () => {
+      try {
+        await execFileAsync('node', [cliPath, 'unknown-command'])
+      } catch (error) {
+        assert.ok(error.stdout.includes(productName))
+        throw error
+      }
+    })
+  })
+
+  it('prints command help for writable and workflow commands', async () => {
+    const commands = ['init', 'validate', 'schema', 'compile']
+
+    for (const command of commands) {
+      const { stdout } = await execFileAsync('node', [cliPath, command, '--help'])
+
+      assert.match(stdout, new RegExp(`tpan-opt-co-worker ${command}`))
+      assert.match(stdout, /Options:/)
+    }
+  })
+
+  it('rejects unknown and incomplete workflow command options', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'compile', '--workflow']),
+      /--workflow requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'compile', '--bogus']),
+      /Unknown compile option "--bogus"/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'validate', '--preset-file']),
+      /--preset-file requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'schema', '--out']),
+      /--out requires a value/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'init', '--policy']),
+      /--policy requires a value/
+    )
   })
 
   it('prints the workflow JSON Schema', async () => {
@@ -339,7 +395,7 @@ describe('CLI', () => {
         targetDir
       ])
 
-      assert.match(stdout, /Wrote 20 files/)
+      assert.match(stdout, /Wrote 22 files/)
       assert.match(stdout, /\.tpan-opt-co-worker\/catalog\.json/)
       assert.match(stdout, /\.tpan-opt-co-worker\/marketplace\.json/)
       assert.match(stdout, /\.tpan-opt-co-worker\/console\/catalog\.js/)
@@ -390,7 +446,7 @@ describe('CLI', () => {
         '--dry-run'
       ])
 
-      assert.match(stdout, /Would write 20 files/)
+      assert.match(stdout, /Would write 22 files/)
       await assert.rejects(() => readFile(join(targetDir, 'AGENTS.md'), 'utf8'), {
         code: 'ENOENT'
       })
@@ -454,7 +510,7 @@ describe('CLI', () => {
         targetDir
       ])
 
-      assert.match(stdout, /Wrote 20 files/)
+      assert.match(stdout, /Wrote 22 files/)
       const verifyScript = await readFile(
         join(targetDir, 'scripts', 'verify-workflow.mjs'),
         'utf8'

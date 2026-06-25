@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+// Syntax-only check: runs `node --check` over every source file to catch parse
+// errors. It is intentionally not a style linter or a type checker. The `lint`
+// and `typecheck` npm scripts both delegate here so that generated workflows
+// referencing those conventional gate names have something to run in this
+// zero-dependency, plain-JavaScript package.
+
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -22,7 +28,7 @@ for (const file of files) {
   }
 }
 
-console.log(`Checked ${files.length} JavaScript files.`)
+console.log(`Checked ${files.length} JavaScript files for syntax (node --check).`)
 
 function listJavaScriptFiles(root) {
   if (!exists(root)) {

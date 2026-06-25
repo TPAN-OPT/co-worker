@@ -104,6 +104,106 @@ describe('init CLI', () => {
     }
   })
 
+  it('uses the selected template default workflow name when --name is omitted', async () => {
+    const productionDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const minimalDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+
+    try {
+      await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        productionDir,
+        '--template',
+        'production-feature'
+      ])
+      const { stdout } = await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        minimalDir,
+        '--template',
+        'minimal'
+      ])
+
+      const productionWorkflow = JSON.parse(
+        await readFile(join(productionDir, 'opt.workflow.json'), 'utf8')
+      )
+      const minimalWorkflow = JSON.parse(
+        await readFile(join(minimalDir, 'opt.workflow.json'), 'utf8')
+      )
+
+      assert.match(stdout, /minimal/)
+      assert.equal(productionWorkflow.name, 'production-feature-workflow')
+      assert.equal(minimalWorkflow.name, 'minimal-evidence-workflow')
+      assert.equal(minimalWorkflow.stages[0].id, 'plan')
+    } finally {
+      await rm(productionDir, { recursive: true, force: true })
+      await rm(minimalDir, { recursive: true, force: true })
+    }
+  })
+
+  it('initializes a language-neutral minimal workflow template', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+    const manualEvidencePath = join(targetDir, 'manual-evidence.json')
+    const reportPath = join(targetDir, 'minimal-report.json')
+
+    try {
+      const { stdout } = await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        targetDir,
+        '--template',
+        'minimal',
+        '--name',
+        'minimal-workflow'
+      ])
+
+      assert.match(stdout, /minimal/)
+      const workflow = JSON.parse(await readFile(workflowPath, 'utf8'))
+      assert.equal(workflow.name, 'minimal-workflow')
+      assert.deepEqual(Object.keys(workflow.roles), ['lead'])
+      assert.equal(workflow.stages[0].id, 'plan')
+      assert.equal(
+        workflow.stages.flatMap((stage) => stage.gates).every((gate) => gate.type === 'manual'),
+        true
+      )
+
+      await execFileAsync('node', [
+        cliPath,
+        'compile',
+        '--workflow',
+        workflowPath,
+        '--out',
+        targetDir
+      ])
+      await writeFile(
+        manualEvidencePath,
+        JSON.stringify({
+          gates: {
+            scope_confirmed: { approvedBy: 'lead@example.com' },
+            local_checks_recorded: { approvedBy: 'lead@example.com' },
+            human_approval: { approvedBy: 'lead@example.com' }
+          }
+        })
+      )
+      await execFileAsync('node', [
+        join(targetDir, 'scripts', 'verify-workflow.mjs'),
+        '--manual-evidence',
+        manualEvidencePath,
+        '--report',
+        reportPath
+      ])
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.allGatesPassed, true)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('initializes a workflow from a reusable team recommendation', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
     const workflowPath = join(targetDir, 'opt.workflow.json')
@@ -198,6 +298,72 @@ describe('init CLI', () => {
         team: 'product-delivery',
         policies: ['quality-standard', 'human-control', 'security-baseline']
       })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('enforces automatable policy rules as a policy_compliance command gate', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+
+    try {
+      await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        targetDir,
+        '--policy',
+        'security-baseline',
+        '--name',
+        'policy-enforced-workflow'
+      ])
+
+      const workflow = JSON.parse(await readFile(workflowPath, 'utf8'))
+      const complianceStage = workflow.stages.find((stage) => stage.id === 'policy_compliance')
+
+      assert.ok(complianceStage)
+      assert.equal(complianceStage.owner, 'reviewer')
+      assert.deepEqual(complianceStage.gates, [
+        {
+          id: 'dependency_audit',
+          preset: 'npm:audit-high',
+          description: 'Run a dependency audit and fail on high severity vulnerabilities.'
+        }
+      ])
+      // The compliance stage runs before the final release stage.
+      assert.equal(workflow.stages[workflow.stages.length - 1].id, 'ship')
+      assert.equal(
+        workflow.stages.findIndex((stage) => stage.id === 'policy_compliance') <
+          workflow.stages.length - 1,
+        true
+      )
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not add a policy_compliance stage when no policy rule is automatable', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+
+    try {
+      await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        targetDir,
+        '--policy',
+        'quality-standard',
+        '--name',
+        'advisory-only-workflow'
+      ])
+
+      const workflow = JSON.parse(await readFile(workflowPath, 'utf8'))
+      assert.equal(
+        workflow.stages.some((stage) => stage.id === 'policy_compliance'),
+        false
+      )
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
