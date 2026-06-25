@@ -481,6 +481,8 @@ tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file g
 - `.tpan-opt-co-worker/catalog.json`
 - `.tpan-opt-co-worker/console/index.html`
 - `.tpan-opt-co-worker/console/catalog.js`
+- `.tpan-opt-co-worker/console/orchestration.js`
+- `.tpan-opt-co-worker/console/orchestration.json`
 - `.tpan-opt-co-worker/marketplace.json`
 - `.tpan-opt-co-worker/workflow.manifest.json`
 - `.tpan-opt-co-worker/workflow.schema.json`
@@ -542,6 +544,8 @@ node scripts/orchestrate-workflow.mjs \
 ```
 
 agent 调用是 opt-in 的：因为它会改动仓库且有成本，所以每个阶段每次运行**最多调用一次**，并且**永远不会满足 manual gate**——agent 不能自我审批，人工审批门在补充证据前仍然阻断。每次调用都会记录到 `invocation-<stage>.json` 和本次运行的 `state.json`。
+
+编排器还会把最新状态镜像到静态 console 的 `.tpan-opt-co-worker/console/orchestration.json` 和 `.tpan-opt-co-worker/console/orchestration.js`。console 的 Orchestration 面板会渲染运行状态、当前阶段、各阶段进度、打开的工单（owner、待办 gate、下一步动作）以及最近的 agent 调用；`orchestration.js` 为默认数据源，`orchestration.json` 作为 fetch fallback。
 
 生成的 GitHub Actions workflow 会在 pull request 和 `main` push 时运行 `scripts/verify-workflow.mjs --run-dir .tpan-opt-co-worker/runs/ci`，并把 `.tpan-opt-co-worker/runs` 上传为 CI artifact，方便审计和 review。
 
@@ -681,6 +685,7 @@ Workflow 自定义 presets：
 - [x] 增加本地 runner harness adapter generation。
 - [x] 增加阶段门控执行编排器：路由工作并按阶段产出工单。
 - [x] 增加 opt-in、harness-neutral 的 agent 调用：驱动当前阶段的 owner agent 并重新门控。
+- [x] 在静态 Web Console 中呈现编排状态、工单和 agent 调用。
 - [x] 增加 GitHub Actions template generation。
 - [x] 增加 GitLab CI template generation。
 - [x] 增加 starter workflow template generation。

@@ -1,4 +1,5 @@
 import { createCatalog } from './catalog-renderer.js'
+import { renderOrchestrationRuntime } from './web-console-orchestration.js'
 
 export function renderWebConsole(workflow) {
   const catalog = createCatalog()
@@ -146,9 +147,10 @@ export function renderWebConsole(workflow) {
       margin-top: 16px;
       color: var(--muted);
     }
-    .organization-panel, .designer-panel, .catalog-panel, .summary-panel, .run-panel, .detail-panel {
+    .organization-panel, .designer-panel, .catalog-panel, .summary-panel, .run-panel, .detail-panel, .orchestration-panel {
       margin-top: 16px;
     }
+    .orchestration-head { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
     .section-head {
       display: flex;
       justify-content: space-between;
@@ -380,11 +382,16 @@ export function renderWebConsole(workflow) {
       <h2 id="gate-details-title">Gate Details</h2>
       <div id="gate-details" class="muted">Run a workflow to inspect command and manual gate results.</div>
     </section>
+    <section class="panel orchestration-panel" aria-labelledby="orchestration-title">
+      <h2 id="orchestration-title">Orchestration</h2>
+      <div id="orchestration" class="muted">Run <code>node scripts/orchestrate-workflow.mjs</code> to drive stages and see live orchestration state.</div>
+    </section>
     <p class="console-note">Generated from the repository workflow manifest. Run <code>node scripts/run-workflow.mjs --run-id &lt;id&gt;</code> to collect verification evidence.</p>
   </main>
   <script id="workflow-data" type="application/json">${escapeScriptJson(workflowData)}</script>
   <script src="catalog.js"></script>
   <script src="runs.js"></script>
+  <script src="orchestration.js"></script>
   <script>
     let currentRuns = []
     let currentDetails = {}
@@ -393,6 +400,7 @@ export function renderWebConsole(workflow) {
     initWorkflowDesigner()
     initRunFilters()
     loadRunHistory()
+    loadOrchestration()
 
     function initWorkflowDesigner() {
       const copyButton = document.getElementById('copy-workflow-json')
@@ -458,6 +466,8 @@ export function renderWebConsole(workflow) {
         renderRunData({ runs: [], details: {} })
       }
     }
+
+${renderOrchestrationRuntime()}
 
     function renderRunData(data) {
       const runs = Array.isArray(data.runs) ? data.runs : []

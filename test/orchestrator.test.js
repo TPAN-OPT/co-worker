@@ -46,6 +46,21 @@ describe('generated orchestrator script', () => {
       assert.equal(state.workOrder.agents.claudeCode, '.claude/agents/engineer.md')
       assert.equal(state.workOrder.agents.codex, '.codex/agents/engineer.toml')
       assert.match(state.workOrder.nextAction, /human_approval/)
+
+      // The orchestrator mirrors the latest state into the static console.
+      const consoleState = JSON.parse(
+        await readFile(
+          join(targetDir, '.tpan-opt-co-worker', 'console', 'orchestration.json'),
+          'utf8'
+        )
+      )
+      assert.equal(consoleState.current.currentStage, 'implement')
+      assert.equal(consoleState.current.status, 'blocked')
+      const consoleScript = await readFile(
+        join(targetDir, '.tpan-opt-co-worker', 'console', 'orchestration.js'),
+        'utf8'
+      )
+      assert.match(consoleScript, /window\.TPAN_OPT_ORCHESTRATION = /)
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }

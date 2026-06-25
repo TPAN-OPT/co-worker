@@ -82,6 +82,7 @@ const state = {
 }
 
 writeStateArtifacts(stateDir, state)
+syncConsoleOrchestration(state)
 console.log(\`Wrote orchestration state: \${stateDir}\`)
 printSummary(state)
 
@@ -317,6 +318,22 @@ function writeStateArtifacts(dir, value) {
   mkdirSync(resolvedDir, { recursive: true })
   writeFileSync(resolve(resolvedDir, 'state.json'), \`\${JSON.stringify(value, null, 2)}\\n\`, 'utf8')
   writeFileSync(resolve(resolvedDir, 'state.md'), renderStateMarkdown(value), 'utf8')
+}
+
+// Mirror the latest orchestration state into the static console so the
+// Orchestration panel can render stage progress, the open work order, and
+// agent invocations without a server, matching how the local runner mirrors
+// run history into runs.json / runs.js.
+function syncConsoleOrchestration(value) {
+  const consoleDir = projectPath('.tpan-opt-co-worker/console')
+  mkdirSync(consoleDir, { recursive: true })
+  const payload = JSON.stringify({ current: value }, null, 2)
+  writeFileSync(resolve(consoleDir, 'orchestration.json'), \`\${payload}\\n\`, 'utf8')
+  writeFileSync(
+    resolve(consoleDir, 'orchestration.js'),
+    \`window.TPAN_OPT_ORCHESTRATION = \${payload}\\n\`,
+    'utf8'
+  )
 }
 
 function renderStateMarkdown(value) {

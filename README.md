@@ -481,6 +481,8 @@ Generated files:
 - `.tpan-opt-co-worker/catalog.json`
 - `.tpan-opt-co-worker/console/index.html`
 - `.tpan-opt-co-worker/console/catalog.js`
+- `.tpan-opt-co-worker/console/orchestration.js`
+- `.tpan-opt-co-worker/console/orchestration.json`
 - `.tpan-opt-co-worker/marketplace.json`
 - `.tpan-opt-co-worker/workflow.manifest.json`
 - `.tpan-opt-co-worker/workflow.schema.json`
@@ -542,6 +544,8 @@ node scripts/orchestrate-workflow.mjs \
 ```
 
 Agent invocation is opt-in because it can change the repository and incur cost, is bounded to one invocation per stage per run, and never satisfies manual gates: agents cannot self-approve, so human approval gates still block until evidence is attached. Each invocation is recorded in `invocation-<stage>.json` and the run `state.json`.
+
+The orchestrator also mirrors its latest state into the static console at `.tpan-opt-co-worker/console/orchestration.json` and `.tpan-opt-co-worker/console/orchestration.js`. The console's Orchestration panel renders the run status, current stage, per-stage progress, the open work order (owner, pending gates, next action), and recent agent invocations, with `orchestration.js` as the default data source and `orchestration.json` as a fetch fallback.
 
 The generated GitHub Actions workflow runs `scripts/verify-workflow.mjs --run-dir .tpan-opt-co-worker/runs/ci` on pull requests and `main` pushes, then uploads `.tpan-opt-co-worker/runs` as a CI artifact for audit and review.
 
@@ -681,6 +685,7 @@ Custom preset names cannot override built-in preset names.
 - [x] Add local runner harness adapter generation.
 - [x] Add a stage-gated execution orchestrator that routes work and emits per-stage work orders.
 - [x] Add opt-in, harness-neutral agent invocation that drives the current stage's owner agent and re-gates.
+- [x] Surface orchestration state, work orders, and agent invocations in the static web console.
 - [x] Add GitHub Actions template generation.
 - [x] Add GitLab CI template generation.
 - [x] Add starter workflow template generation.

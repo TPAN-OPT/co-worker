@@ -179,6 +179,17 @@ export function compileWorkflow(input) {
       content: renderEmptyRunsData()
     },
     {
+      // Empty orchestration state so the console loads cleanly before any
+      // orchestrate-workflow run exists. The orchestrator overwrites both files
+      // once a run records stage state.
+      path: '.tpan-opt-co-worker/console/orchestration.js',
+      content: renderEmptyOrchestrationScript()
+    },
+    {
+      path: '.tpan-opt-co-worker/console/orchestration.json',
+      content: renderEmptyOrchestrationData()
+    },
+    {
       path: 'scripts/run-workflow.mjs',
       content: renderLocalRunnerScript()
     },
@@ -205,6 +216,16 @@ function renderEmptyRunsScript() {
 
 function renderEmptyRunsData() {
   return `${JSON.stringify(EMPTY_RUN_HISTORY, null, 2)}\n`
+}
+
+const EMPTY_ORCHESTRATION = { current: null }
+
+function renderEmptyOrchestrationScript() {
+  return `window.TPAN_OPT_ORCHESTRATION = ${JSON.stringify(EMPTY_ORCHESTRATION, null, 2)}\n`
+}
+
+function renderEmptyOrchestrationData() {
+  return `${JSON.stringify(EMPTY_ORCHESTRATION, null, 2)}\n`
 }
 
 function normalizeRoles(roles) {
