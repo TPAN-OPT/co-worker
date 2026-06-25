@@ -283,12 +283,12 @@ describe('generated verify-workflow script', () => {
     }
   })
 
-  it('blocks downstream command gates when an earlier manual gate is pending', async () => {
+  it('runs command gates even when an earlier manual gate is pending', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
 
     try {
       const scriptPath = await writeCustomVerifyScript(targetDir, {
-        name: 'blocked-workflow',
+        name: 'pending-manual-workflow',
         version: '1.0.0',
         roles: {
           lead: {
@@ -321,7 +321,7 @@ describe('generated verify-workflow script', () => {
           }
         ]
       })
-      const reportPath = join(targetDir, 'blocked-report.json')
+      const reportPath = join(targetDir, 'pending-manual-report.json')
       let stdout = ''
 
       await assert.rejects(
@@ -334,8 +334,8 @@ describe('generated verify-workflow script', () => {
       )
 
       const report = JSON.parse(await readFile(reportPath, 'utf8'))
-      assert.doesNotMatch(stdout, /DEPLOY_CHECK_RAN/)
-      assert.equal(report.commandPassed, false)
+      assert.match(stdout, /DEPLOY_CHECK_RAN/)
+      assert.equal(report.commandPassed, true)
       assert.equal(report.allGatesPassed, false)
       assert.deepEqual(report.commandGates[0], {
         stageId: 'deploy',
@@ -343,9 +343,8 @@ describe('generated verify-workflow script', () => {
         preset: '',
         command: 'node -e "console.log(\\"DEPLOY_CHECK_RAN\\")"',
         description: '',
-        status: 'skipped',
-        exitCode: null,
-        blockedBy: 'approve.human_approval'
+        status: 'passed',
+        exitCode: 0
       })
       assert.equal(report.manualGates[0].status, 'pending')
     } finally {

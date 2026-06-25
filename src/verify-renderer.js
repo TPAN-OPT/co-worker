@@ -32,39 +32,33 @@ const manualGateIdCounts = countManualGateIds(manualGates)
 
 console.log(\`TPAN-OPT/CO-WORKER workflow: \${workflow.name}@\${workflow.version}\`)
 
-let blockedBy = ''
+// Command gates run independently of manual gates so that automated checks
+// (tests, coverage, lint) always execute in CI, where manual approvals are
+// not attached. A failed command gate still fail-fasts subsequent command
+// gates, but a pending manual gate never blocks command execution. Manual
+// gates only affect the final allGatesPassed verdict.
+let commandBlockedBy = ''
 
 for (const stage of workflowStages) {
-  if (blockedBy) {
-    for (const gate of stage.commandGates) {
-      commandGateResults.push(skipCommandGate(gate, blockedBy))
-    }
-    for (const gate of stage.manualGates) {
-      manualGateResults.push({
-        ...gate,
-        status: 'pending',
-        blockedBy
-      })
-      printManualGate(gate)
-    }
-    continue
-  }
-
   for (const gate of stage.commandGates) {
+    if (commandBlockedBy) {
+      commandGateResults.push(skipCommandGate(gate, commandBlockedBy))
+      continue
+    }
+
     const result = runCommandGate(gate)
     commandGateResults.push(result)
-    if (result.status === 'failed' && !blockedBy) {
-      blockedBy = getGateRef(gate)
+    if (result.status === 'failed') {
+      commandBlockedBy = getGateRef(gate)
     }
   }
+}
 
+for (const stage of workflowStages) {
   for (const gate of stage.manualGates) {
     const result = evaluateManualGate(gate)
     manualGateResults.push(result)
     printManualGate(gate)
-    if (result.status !== 'passed' && !blockedBy) {
-      blockedBy = getGateRef(gate)
-    }
   }
 }
 

@@ -1,10 +1,11 @@
+import { createWorkflowFromTemplate } from './workflow-template.js'
+
 const REUSABLE_AGENT_TEAMS = [
   {
     id: 'product-delivery',
     name: 'Product Delivery Team',
     description:
       'Planner, engineer, reviewer, and release manager roles for verified feature delivery.',
-    roles: ['planner', 'engineer', 'reviewer', 'release-manager'],
     recommendedTemplate: 'production-feature',
     recommendedPolicies: ['quality-standard', 'human-control']
   },
@@ -13,7 +14,6 @@ const REUSABLE_AGENT_TEAMS = [
     name: 'OPT Core Team',
     description:
       'Compact one-person-team role set for planning, implementation, review, and evidence tracking.',
-    roles: ['lead', 'builder', 'reviewer'],
     recommendedTemplate: 'production-feature',
     recommendedPolicies: ['quality-standard', 'human-control', 'security-baseline']
   },
@@ -22,18 +22,30 @@ const REUSABLE_AGENT_TEAMS = [
     name: 'Security Release Team',
     description:
       'Reviewer-heavy role set for security-sensitive release preparation and approval.',
-    roles: ['security-reviewer', 'release-manager', 'human-approver'],
     recommendedTemplate: 'production-feature',
     recommendedPolicies: ['security-baseline', 'human-control']
   }
 ]
 
-export function listReusableAgentTeams() {
-  return REUSABLE_AGENT_TEAMS.map((team) => ({
+// The roles a team produces are exactly the roles of its recommended template,
+// because `init --team` generates from that template. Deriving the list here
+// keeps the advertised roles truthful instead of drifting from what is
+// actually generated.
+function rolesForTeam(team) {
+  const workflow = createWorkflowFromTemplate(team.recommendedTemplate)
+  return Object.keys(workflow.roles)
+}
+
+function presentTeam(team) {
+  return {
     ...team,
-    roles: [...team.roles],
+    roles: rolesForTeam(team),
     recommendedPolicies: [...team.recommendedPolicies]
-  }))
+  }
+}
+
+export function listReusableAgentTeams() {
+  return REUSABLE_AGENT_TEAMS.map((team) => presentTeam(team))
 }
 
 export function getReusableAgentTeam(teamId) {
@@ -43,9 +55,5 @@ export function getReusableAgentTeam(teamId) {
     throw new Error(`Unknown reusable agent team "${teamId}"`)
   }
 
-  return {
-    ...team,
-    roles: [...team.roles],
-    recommendedPolicies: [...team.recommendedPolicies]
-  }
+  return presentTeam(team)
 }

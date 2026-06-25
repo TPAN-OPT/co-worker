@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -34,7 +35,25 @@ if (failures.length > 0) {
 console.log(`Repository health checked ${files.length} files.`)
 
 function listRepositoryFiles() {
+  // Prefer git-tracked files so untracked, environment-generated files (for
+  // example a tool's .claude/settings.local.json) are not scanned. Fall back to
+  // a filesystem walk when git is unavailable or the working tree has no
+  // tracked files yet, which keeps the script usable in scratch directories.
+  const trackedFiles = listTrackedFiles()
+  if (trackedFiles && trackedFiles.length > 0) {
+    return trackedFiles.filter((file) => !file.startsWith('.git/')).sort()
+  }
+
   return listFiles('.').filter((file) => !file.startsWith('.git/')).sort()
+}
+
+function listTrackedFiles() {
+  try {
+    const output = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' })
+    return output.split('\0').filter(Boolean)
+  } catch {
+    return null
+  }
 }
 
 function listFiles(root) {

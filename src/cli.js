@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import {
   getReusableAgentTeam,
@@ -121,17 +121,114 @@ async function runInit(args) {
     console.log(
       `Wrote workflow template ${template} for team ${team.id} (policies: ${policyIds.join(', ')}): ${result.written[0]}`
     )
-    return
-  }
-
-  if (policyIds.length > 0) {
+  } else if (policyIds.length > 0) {
     console.log(
       `Wrote workflow template ${template} (policies: ${policyIds.join(', ')}): ${result.written[0]}`
     )
+  } else {
+    console.log(`Wrote workflow template ${template}: ${result.written[0]}`)
+  }
+
+  await scaffoldPackageJson(workflow, targetDir)
+}
+
+// Templates such as production-feature gate on npm scripts (npm test,
+// npm run test:coverage). In a fresh repository those scripts do not exist,
+// and `npm` would otherwise climb to a parent package.json and run an
+// unrelated project's checks. Scaffold a local placeholder package.json so the
+// command gates resolve to this repository and fail honestly until the team
+// wires in real checks. Only written when absent so existing manifests are
+// never clobbered.
+async function scaffoldPackageJson(workflow, targetDir) {
+  const npmScripts = collectNpmScriptNames(workflow)
+
+  if (npmScripts.length === 0) {
     return
   }
 
-  console.log(`Wrote workflow template ${template}: ${result.written[0]}`)
+  if (await targetHasFile(targetDir, 'package.json')) {
+    return
+  }
+
+  await writeCompiledOutputs(
+    [
+      {
+        path: 'package.json',
+        content: renderStarterPackageJson(npmScripts)
+      }
+    ],
+    targetDir,
+    { force: false }
+  )
+
+  console.log(
+    `Scaffolded package.json with placeholder scripts (${npmScripts.join(', ')}). Replace them with your project's real checks before relying on the gates.`
+  )
+}
+
+function collectNpmScriptNames(workflow) {
+  const normalized = validateWorkflow(workflow)
+  const names = new Set()
+
+  for (const stage of normalized.stages) {
+    for (const gate of stage.gates) {
+      if (gate.type !== 'command') {
+        continue
+      }
+
+      const scriptName = npmScriptNameFromCommand(gate.command)
+      if (scriptName) {
+        names.add(scriptName)
+      }
+    }
+  }
+
+  return [...names]
+}
+
+function npmScriptNameFromCommand(command) {
+  if (/^npm\s+test\b/.test(command)) {
+    return 'test'
+  }
+
+  const runMatch = command.match(/^npm\s+run\s+([A-Za-z0-9:_-]+)\b/)
+  if (runMatch) {
+    return runMatch[1]
+  }
+
+  return null
+}
+
+function renderStarterPackageJson(scriptNames) {
+  const scripts = Object.fromEntries(
+    scriptNames.map((scriptName) => [
+      scriptName,
+      `echo "Configure the '${scriptName}' script for this repository (placeholder created by TPAN-OPT/CO-WORKER)." && exit 1`
+    ])
+  )
+
+  const manifest = {
+    private: true,
+    version: '0.0.0',
+    description:
+      'Scaffolded by TPAN-OPT/CO-WORKER. Replace the placeholder scripts with your project checks.',
+    scripts
+  }
+
+  return `${JSON.stringify(manifest, null, 2)}\n`
+}
+
+async function targetHasFile(targetDir, relativePath) {
+  try {
+    await access(resolve(targetDir, relativePath))
+    return true
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return false
+    }
+
+    throw error
+  }
 }
 
 async function runCompile(args) {
