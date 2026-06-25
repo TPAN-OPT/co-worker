@@ -446,7 +446,7 @@ tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
 tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
 ```
 
-`init` 会从指定 workflow template 写出 starter `opt.workflow.json`。默认 `production-feature` 模板内置 planner、engineer、reviewer、release-manager 四类角色和一套生产交付流程。传入 `--team <id>` 后，会使用该可复用 team 推荐的模板，除非同时显式传入 `--template`，并在生成的 workflow 中记录 `organization.team` 和推荐 policy ids。传入 `--policy <id>` 会追加经过校验的组织级 policy packs；重复 policy 会按出现顺序去重。它默认拒绝覆盖已有 workflow；需要覆盖时必须显式传入 `--force`。
+`init` 会从指定 workflow template 写出 starter `opt.workflow.json`。默认 `production-feature` 模板内置 planner、engineer、reviewer、release-manager 四类角色和一套生产交付流程。传入 `--team <id>` 后，会使用该可复用 team 推荐的模板，除非同时显式传入 `--template`，并在生成的 workflow 中记录 `organization.team` 和推荐 policy ids。传入 `--policy <id>` 会追加经过校验的组织级 policy packs；重复 policy 会按出现顺序去重。当所选 policy 含可自动化规则时(目前是 `security-baseline` 的 `dependency_audit`),`init` 会在最后一个阶段之前注入一个专门的 `policy_compliance` 阶段并带上对应的 command gate(例如 `npm:audit-high`),使该规则在验证时被真正强制执行,而不仅是写入文档。不可自动化的规则仍作为生成指令中的 advisory prompt 文本。它默认拒绝覆盖已有 workflow；需要覆盖时必须显式传入 `--force`。
 
 默认 `production-feature` 模板使用内置 `node:test` 和 `node:coverage` presets，因此生成后的本地运行会要求目标仓库提供 `npm test` 和 `npm run test:coverage`。当模板包含基于 npm 的 command gates 且目标目录没有 `package.json` 时，`init` 会 scaffold 一个占位 `package.json`,其 `test` 和 `test:coverage` 脚本会以非零退出并打印「configure me」提示。这样 command gates 会锚定到目标仓库,而不是误命中无关的父级 `package.json`,并在你接入真实检查前诚实地失败。已存在的 `package.json` 不会被修改。如果目标是非 Node 项目或空 starter 目录，可以先使用 `--template minimal`，也可以用 workflow 内的 `gatePresets` 或 `--preset-file` 覆盖 command gates。
 

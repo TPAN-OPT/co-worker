@@ -17,6 +17,7 @@ import {
 import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { getOrganizationPolicyPack } from './policy-catalog.js'
+import { policyComplianceGates } from './policy-gates.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
 import { createWorkflowFromTemplate } from './workflow-template.js'
 
@@ -102,10 +103,11 @@ async function runInit(args) {
         policies: policyIds
       }
     : null
-  const workflow = createWorkflowFromTemplate(template, {
+  const baseWorkflow = createWorkflowFromTemplate(template, {
     name: options.name,
     organization
   })
+  const workflow = withPolicyComplianceStage(baseWorkflow, policyComplianceGates(policyIds))
   const result = await writeCompiledOutputs(
     [
       {
@@ -130,6 +132,47 @@ async function runInit(args) {
   }
 
   await scaffoldPackageJson(workflow, targetDir)
+}
+
+// Injects a dedicated policy_compliance stage that enforces the automatable
+// rules contributed by the selected organization policies (for example a
+// dependency audit). Non-automatable rules stay advisory prompt text. The stage
+// is placed before the final stage so compliance runs ahead of release, and is
+// skipped when no policy contributes an enforceable gate or when a stage with
+// that id already exists.
+function withPolicyComplianceStage(workflow, complianceGates) {
+  if (complianceGates.length === 0) {
+    return workflow
+  }
+
+  if (workflow.stages.some((stage) => stage.id === 'policy_compliance')) {
+    return workflow
+  }
+
+  const complianceStage = {
+    id: 'policy_compliance',
+    owner: pickComplianceOwner(workflow),
+    output: 'policy_compliance_evidence',
+    gates: complianceGates
+  }
+
+  return {
+    ...workflow,
+    stages: insertBeforeLastStage(workflow.stages, complianceStage)
+  }
+}
+
+function pickComplianceOwner(workflow) {
+  const roleIds = Object.keys(workflow.roles)
+  return roleIds.includes('reviewer') ? 'reviewer' : roleIds[0]
+}
+
+function insertBeforeLastStage(stages, stage) {
+  if (stages.length === 0) {
+    return [stage]
+  }
+
+  return [...stages.slice(0, -1), stage, stages[stages.length - 1]]
 }
 
 // Templates such as production-feature gate on npm scripts (npm test,

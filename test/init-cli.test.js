@@ -303,6 +303,72 @@ describe('init CLI', () => {
     }
   })
 
+  it('enforces automatable policy rules as a policy_compliance command gate', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+
+    try {
+      await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        targetDir,
+        '--policy',
+        'security-baseline',
+        '--name',
+        'policy-enforced-workflow'
+      ])
+
+      const workflow = JSON.parse(await readFile(workflowPath, 'utf8'))
+      const complianceStage = workflow.stages.find((stage) => stage.id === 'policy_compliance')
+
+      assert.ok(complianceStage)
+      assert.equal(complianceStage.owner, 'reviewer')
+      assert.deepEqual(complianceStage.gates, [
+        {
+          id: 'dependency_audit',
+          preset: 'npm:audit-high',
+          description: 'Run a dependency audit and fail on high severity vulnerabilities.'
+        }
+      ])
+      // The compliance stage runs before the final release stage.
+      assert.equal(workflow.stages[workflow.stages.length - 1].id, 'ship')
+      assert.equal(
+        workflow.stages.findIndex((stage) => stage.id === 'policy_compliance') <
+          workflow.stages.length - 1,
+        true
+      )
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not add a policy_compliance stage when no policy rule is automatable', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+
+    try {
+      await execFileAsync('node', [
+        cliPath,
+        'init',
+        '--out',
+        targetDir,
+        '--policy',
+        'quality-standard',
+        '--name',
+        'advisory-only-workflow'
+      ])
+
+      const workflow = JSON.parse(await readFile(workflowPath, 'utf8'))
+      assert.equal(
+        workflow.stages.some((stage) => stage.id === 'policy_compliance'),
+        false
+      )
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects unknown workflow templates during initialization', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
 
