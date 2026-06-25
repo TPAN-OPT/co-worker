@@ -120,7 +120,7 @@ describe('generated orchestrator script', () => {
         join(targetDir, '.tpan-opt-co-worker', 'orchestrations', 'done', 'state.md'),
         'utf8'
       )
-      assert.match(summary, /# TPAN-OPT\/CO-WORKER Orchestration State/)
+      assert.ok(summary.includes('# TPAN-OPT/CO-WORKER Orchestration State'))
       assert.match(stdout, /All stages complete/)
     } finally {
       await rm(targetDir, { recursive: true, force: true })
