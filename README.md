@@ -40,7 +40,7 @@ TPAN-OPT/CO-WORKER currently ships a no-dependency Node.js workflow compiler.
 
 Requirements:
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 - npm 10 or newer
 
 Run the test suite:
@@ -429,7 +429,7 @@ npm audit --audit-level=high
 - `build` compiles the example workflow into a temporary repository and verifies generated assets can be written.
 - `pack:check` runs an npm package dry run with an isolated cache and verifies required release files.
 - `npm audit --audit-level=high` verifies dependency security posture; the package currently has no runtime dependencies.
-GitHub Actions runs the same quality gates on `main` pushes and pull requests for Node.js 20 and 22.
+GitHub Actions runs the same quality gates on `main` pushes and pull requests for Node.js 22.
 
 ## Current CLI
 

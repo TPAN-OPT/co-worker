@@ -40,7 +40,7 @@ TPAN-OPT/CO-WORKER 当前提供一个无外部依赖的 Node.js workflow compile
 
 环境要求：
 
-- Node.js 20 或更高版本
+- Node.js 22 或更高版本
 - npm 10 或更高版本
 
 运行测试：
@@ -429,7 +429,7 @@ npm audit --audit-level=high
 - `build` 会把示例 workflow 编译到临时仓库，验证生成资产可以正常写出。
 - `pack:check` 会用隔离 npm cache 执行 package dry run，并验证必要发布文件存在。
 - `npm audit --audit-level=high` 会验证依赖安全状态；当前 package 没有运行时依赖。
-GitHub Actions 会在 `main` push 和 pull request 中用 Node.js 20 与 22 运行同一套质量门禁。
+GitHub Actions 会在 `main` push 和 pull request 中用 Node.js 22 运行同一套质量门禁。
 
 ## 当前 CLI
 
