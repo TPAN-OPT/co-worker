@@ -1,3 +1,5 @@
+import { IDENTIFIER_PATTERN_SOURCE } from './identifier-pattern.js'
+
 export function renderWorkflowSchema() {
   const schema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -179,7 +181,7 @@ function nonEmptyString(description) {
 function identifier(description) {
   return {
     type: 'string',
-    pattern: '^[A-Za-z][A-Za-z0-9_-]*$',
+    pattern: IDENTIFIER_PATTERN_SOURCE,
     description
   }
 }

@@ -1,4 +1,5 @@
 import { GATE_PRESETS, createGatePresetRegistry, resolveGatePreset } from './gate-presets.js'
+import { IDENTIFIER_PATTERN } from './identifier-pattern.js'
 import {
   renderCatalogJson,
   renderCatalogScript,
@@ -25,7 +26,6 @@ import {
 } from './organization-renderer.js'
 import { renderWebConsole } from './web-console-renderer.js'
 
-const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_-]*$/i
 const WORKFLOW_FIELDS = ['name', 'version', 'organization', 'gatePresets', 'roles', 'stages']
 const ORGANIZATION_FIELDS = ['team', 'policies']
 const ROLE_FIELDS = ['description', 'skills', 'permissions']

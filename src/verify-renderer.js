@@ -143,11 +143,32 @@ function evaluateManualGate(gate) {
     }
   }
 
+  if (!hasAuditableApproval(evidence)) {
+    console.error(
+      \`Manual gate \${getGateRef(gate)} evidence is missing a non-empty "approvedBy" field; treating it as pending.\`
+    )
+    return {
+      ...gate,
+      status: 'pending',
+      evidence
+    }
+  }
+
   return {
     ...gate,
     status: 'passed',
     evidence
   }
+}
+
+function hasAuditableApproval(evidence) {
+  return (
+    evidence !== null &&
+    typeof evidence === 'object' &&
+    !Array.isArray(evidence) &&
+    typeof evidence.approvedBy === 'string' &&
+    evidence.approvedBy.trim() !== ''
+  )
 }
 
 function findManualEvidence(gate) {

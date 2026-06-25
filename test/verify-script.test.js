@@ -283,6 +283,56 @@ describe('generated verify-workflow script', () => {
     }
   })
 
+  it('treats manual evidence without an approvedBy field as pending', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
+
+    try {
+      const scriptPath = await writeVerifyScript(targetDir, {
+        command: 'node -e "process.exit(0)"'
+      })
+      const reportPath = join(targetDir, 'unsigned-evidence-report.json')
+      const manualEvidencePath = join(targetDir, 'manual-evidence.json')
+      await writeFile(
+        manualEvidencePath,
+        JSON.stringify({
+          gates: {
+            human_approval: {
+              note: 'Looks fine to me.'
+            }
+          }
+        })
+      )
+
+      await assert.rejects(
+        () =>
+          execFileAsync('node', [
+            scriptPath,
+            '--manual-evidence',
+            manualEvidencePath,
+            '--report',
+            reportPath
+          ]),
+        (error) => {
+          assert.equal(error.code, 1)
+          assert.match(
+            `${error.stdout}${error.stderr}`,
+            /missing a non-empty "approvedBy" field/
+          )
+          return true
+        }
+      )
+
+      const report = JSON.parse(await readFile(reportPath, 'utf8'))
+      assert.equal(report.allGatesPassed, false)
+      assert.equal(report.manualGates[0].status, 'pending')
+      assert.deepEqual(report.manualGates[0].evidence, {
+        note: 'Looks fine to me.'
+      })
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('runs command gates even when an earlier manual gate is pending', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-verify-'))
 
