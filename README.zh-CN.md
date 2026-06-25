@@ -464,7 +464,7 @@ tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file g
 
 `teams` 会以文本或 JSON 列出可复用 agent team catalog，包括推荐角色组合，以及后续组织级 workflow 生成可使用的 template 和 policy 关联。
 
-`marketplace` 会列出内置分发包元数据，覆盖可复用 skills、MCP server profiles 和 portable hook packages。使用 `--out` 可以写出 marketplace JSON artifact，用于后续 registry、Web Console package picker 或组织批准的包镜像。
+`marketplace` 会列出内置分发包元数据，覆盖可复用 skills、MCP server profiles 和 portable hook packages。这仅是元数据预览:包安装尚未实现,所引用的 `install.files` 只是描述性目标,并非已随包发布的资产。使用 `--out` 可以写出 marketplace JSON artifact，用于后续 registry、Web Console package picker 或组织批准的包镜像。
 
 生成文件：
 

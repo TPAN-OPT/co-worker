@@ -167,6 +167,17 @@ export function compileWorkflow(input) {
       content: renderWebConsole(workflow)
     },
     {
+      // Empty run history so the freshly generated console loads cleanly
+      // before any verification run exists. The local runner overwrites both
+      // files once runs are recorded.
+      path: '.tpan-opt-co-worker/console/runs.js',
+      content: renderEmptyRunsScript()
+    },
+    {
+      path: '.tpan-opt-co-worker/console/runs.json',
+      content: renderEmptyRunsData()
+    },
+    {
       path: 'scripts/run-workflow.mjs',
       content: renderLocalRunnerScript()
     },
@@ -179,6 +190,16 @@ export function compileWorkflow(input) {
       content: renderVerifyScript(workflow)
     }
   ]
+}
+
+const EMPTY_RUN_HISTORY = { runs: [], details: {} }
+
+function renderEmptyRunsScript() {
+  return `window.TPAN_OPT_RUNS = ${JSON.stringify(EMPTY_RUN_HISTORY, null, 2)}\n`
+}
+
+function renderEmptyRunsData() {
+  return `${JSON.stringify(EMPTY_RUN_HISTORY, null, 2)}\n`
 }
 
 function normalizeRoles(roles) {

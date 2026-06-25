@@ -151,7 +151,7 @@ export async function runMarketplace(args) {
     return
   }
 
-  console.log('Marketplace distribution packages:')
+  console.log('Marketplace distribution packages (metadata preview; install is not yet implemented):')
   for (const marketplacePackage of marketplace) {
     console.log(
       `- ${marketplacePackage.id} [${marketplacePackage.type}] ${marketplacePackage.description}`

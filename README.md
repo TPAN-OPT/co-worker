@@ -464,7 +464,7 @@ The default `production-feature` template uses the built-in `node:test` and `nod
 
 `teams` lists reusable agent team catalogs as text or JSON, including recommended role sets plus template and policy associations for future organization-level workflow generation.
 
-`marketplace` lists built-in distribution package metadata for reusable skills, MCP server profiles, and portable hook packages. Use `--out` to write a marketplace JSON artifact that can seed future registries, web-console package pickers, or organization-approved package mirrors.
+`marketplace` lists built-in distribution package metadata for reusable skills, MCP server profiles, and portable hook packages. This is a metadata preview only: package installation is not yet implemented, and the referenced `install.files` are descriptive targets rather than shipped assets. Use `--out` to write a marketplace JSON artifact that can seed future registries, web-console package pickers, or organization-approved package mirrors.
 
 Generated files:
 

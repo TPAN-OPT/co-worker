@@ -132,6 +132,25 @@ async function runInit(args) {
   }
 
   await scaffoldPackageJson(workflow, targetDir)
+  printInitNextSteps(workflow, result.written[0])
+}
+
+function printInitNextSteps(workflow, workflowFile) {
+  const hasCommandGate = validateWorkflow(workflow).stages.some((stage) =>
+    stage.gates.some((gate) => gate.type === 'command')
+  )
+
+  console.log('')
+  console.log('Next steps:')
+  console.log(`  1. Compile harness assets: tpan-opt-co-worker compile --workflow ${workflowFile} --out .`)
+  if (hasCommandGate) {
+    console.log('  2. Replace the placeholder package.json scripts with your real checks.')
+    console.log('  3. Run verification: node scripts/verify-workflow.mjs')
+    console.log('  4. Attach manual approvals via --manual-evidence before release.')
+  } else {
+    console.log('  2. Run verification: node scripts/verify-workflow.mjs --manual-evidence manual-evidence.json')
+    console.log('  3. Record approver evidence (approvedBy) for each manual gate before release.')
+  }
 }
 
 // Injects a dedicated policy_compliance stage that enforces the automatable

@@ -45,6 +45,24 @@ describe('generated web console runtime', () => {
       'No gate details recorded for the selected runs.'
     )
   })
+
+  it('emits empty run history placeholders for a clean first load', () => {
+    const outputs = compileWorkflow(webConsoleWorkflow())
+    const runsScript = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/runs.js'
+    )
+    const runsData = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/runs.json'
+    )
+
+    assert.ok(runsScript)
+    assert.match(runsScript.content, /window\.TPAN_OPT_RUNS = /)
+    assert.deepEqual(JSON.parse(runsData.content), { runs: [], details: {} })
+    assert.deepEqual(
+      JSON.parse(runsScript.content.replace('window.TPAN_OPT_RUNS = ', '')),
+      { runs: [], details: {} }
+    )
+  })
 })
 
 function webConsoleWorkflow() {
