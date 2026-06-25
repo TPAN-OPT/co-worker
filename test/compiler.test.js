@@ -540,6 +540,7 @@ describe('compileWorkflow', () => {
       'CLAUDE.md',
       'opencode.json',
       'scripts/list-runs.mjs',
+      'scripts/orchestrate-workflow.mjs',
       'scripts/run-workflow.mjs',
       'scripts/verify-workflow.mjs'
     ])

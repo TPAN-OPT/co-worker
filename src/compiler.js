@@ -12,6 +12,7 @@ import {
 import { renderGithubAction, renderGitlabCi } from './ci-renderer.js'
 import { renderCursorRule } from './cursor-renderer.js'
 import { renderLocalRunnerScript } from './local-runner-renderer.js'
+import { renderOrchestratorScript } from './orchestrator-renderer.js'
 import { renderWorkflowManifest } from './manifest-renderer.js'
 import { renderRunListScript } from './run-list-renderer.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
@@ -188,6 +189,10 @@ export function compileWorkflow(input) {
     {
       path: 'scripts/verify-workflow.mjs',
       content: renderVerifyScript(workflow)
+    },
+    {
+      path: 'scripts/orchestrate-workflow.mjs',
+      content: renderOrchestratorScript()
     }
   ]
 }

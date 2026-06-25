@@ -20,9 +20,9 @@ TPAN-OPT/CO-WORKER turns a team's operating method into a versioned, executable 
 
 ## Current Implementation Scope
 
-The current package is a no-dependency Node.js workflow compiler, local verifier, local runner, and static workflow console. It validates JSON workflow definitions, generates repository-local harness assets, runs staged verification gates, records evidence, and syncs local run history into the generated console.
+The current package is a no-dependency Node.js workflow compiler, local verifier, local runner, stage-gated execution orchestrator, and static workflow console. It validates JSON workflow definitions, generates repository-local harness assets, runs staged verification gates, advances a stage-by-stage state machine that stops at the first unsatisfied gate and emits a work order, records evidence, and syncs local run history into the generated console.
 
-The broader team operating system language in this README describes the product direction. Runtime scheduling beyond the generated local runner, marketplace package installation, YAML authoring, and hosted orchestration are not part of the current package yet.
+The broader team operating system language in this README describes the product direction. The execution orchestrator routes and gates work and can drive the current stage's owner agent through an opt-in, harness-neutral `--invoke`/`--agent-command` adapter, but it does not yet schedule or coordinate agents autonomously. Hosted orchestration, marketplace package installation, and YAML authoring are not part of the current package yet.
 
 ## What TPAN-OPT/CO-WORKER Provides
 
@@ -486,6 +486,7 @@ Generated files:
 - `.tpan-opt-co-worker/workflow.schema.json`
 - `opencode.json`
 - `scripts/list-runs.mjs`
+- `scripts/orchestrate-workflow.mjs`
 - `scripts/run-workflow.mjs`
 - `scripts/verify-workflow.mjs`
 
@@ -499,7 +500,7 @@ The generated Cursor rule at `.cursor/rules/tpan-opt-co-worker.mdc` keeps workfl
 
 The generated OpenCode assets include `opencode.json` plus one `.opencode/agents/<role>.md` subagent file per workflow role.
 
-The generated `.tpan-opt-co-worker/workflow.manifest.json` is the harness-neutral manifest for local runners and future adapters. It records organization metadata, normalized roles, stages, catalog and marketplace artifact paths, harness asset paths, and the standard verification command.
+The generated `.tpan-opt-co-worker/workflow.manifest.json` is the harness-neutral manifest for local runners, the execution orchestrator, and future adapters. It records organization metadata, normalized roles, stages, catalog and marketplace artifact paths, harness asset paths (including the orchestrator script and its state directory under `harnesses.orchestrator`), and the standard verification command.
 
 The generated `.tpan-opt-co-worker/workflow.schema.json` is a JSON Schema for workflow authoring tools, editors, and future web-console form generation.
 
@@ -521,6 +522,26 @@ The runner also maintains `.tpan-opt-co-worker/runs/index.json`. List local run 
 node scripts/list-runs.mjs
 node scripts/list-runs.mjs --json
 ```
+
+The generated execution orchestrator is a stage-gated state machine. Unlike the verifier, which evaluates every command gate globally, the orchestrator walks stages in order and refuses to start a later stage until the current stage's gates all pass. It stops at the first stage whose gates are unsatisfied — the routing and approval boundary — and emits a work order for that stage's owner role: the role's skills and permissions, the per-harness agent file to drive (`.claude/agents/<role>.md`, `.codex/agents/<role>.toml`, `.opencode/agents/<role>.md`), the stage's required work, the pending gates, and the next action. State is written to `.tpan-opt-co-worker/orchestrations/<run-id>/state.json` and a human-readable `state.md`. The script exits non-zero while the workflow is blocked and exits zero only when every stage is complete, so it can gate CI:
+
+```bash
+node scripts/orchestrate-workflow.mjs \
+  --run-id feature-001 \
+  --manual-evidence examples/manual-evidence.json
+```
+
+The orchestrator can also drive the current stage's owner agent. Pass `--invoke` with a harness-neutral `--agent-command` template and the orchestrator, when it reaches an unsatisfied stage, writes a work-order brief to `brief-<stage>.json`, runs the command once for that stage's owner, then re-evaluates the stage's gates and advances if they now pass. The command template substitutes `{stage}`, `{role}`, and `{brief}`, and the same values are exported as `TPAN_OPT_STAGE`, `TPAN_OPT_ROLE`, and `TPAN_OPT_BRIEF` environment variables, so any agent CLI (Claude Code, Codex, OpenCode, or a custom runner) can be wired in without locking the workflow to one harness:
+
+```bash
+node scripts/orchestrate-workflow.mjs \
+  --run-id feature-001 \
+  --manual-evidence examples/manual-evidence.json \
+  --invoke \
+  --agent-command 'claude -p "Complete stage {role} using brief {brief}"'
+```
+
+Agent invocation is opt-in because it can change the repository and incur cost, is bounded to one invocation per stage per run, and never satisfies manual gates: agents cannot self-approve, so human approval gates still block until evidence is attached. Each invocation is recorded in `invocation-<stage>.json` and the run `state.json`.
 
 The generated GitHub Actions workflow runs `scripts/verify-workflow.mjs --run-dir .tpan-opt-co-worker/runs/ci` on pull requests and `main` pushes, then uploads `.tpan-opt-co-worker/runs` as a CI artifact for audit and review.
 
@@ -658,6 +679,8 @@ Custom preset names cannot override built-in preset names.
 - [x] Add organization standards to generated harness instructions.
 - [x] Expand built-in organization policy pack rules into generated harness instructions.
 - [x] Add local runner harness adapter generation.
+- [x] Add a stage-gated execution orchestrator that routes work and emits per-stage work orders.
+- [x] Add opt-in, harness-neutral agent invocation that drives the current stage's owner agent and re-gates.
 - [x] Add GitHub Actions template generation.
 - [x] Add GitLab CI template generation.
 - [x] Add starter workflow template generation.

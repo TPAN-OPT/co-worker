@@ -395,7 +395,7 @@ describe('CLI', () => {
         targetDir
       ])
 
-      assert.match(stdout, /Wrote 22 files/)
+      assert.match(stdout, /Wrote 23 files/)
       assert.match(stdout, /\.tpan-opt-co-worker\/catalog\.json/)
       assert.match(stdout, /\.tpan-opt-co-worker\/marketplace\.json/)
       assert.match(stdout, /\.tpan-opt-co-worker\/console\/catalog\.js/)
@@ -446,7 +446,7 @@ describe('CLI', () => {
         '--dry-run'
       ])
 
-      assert.match(stdout, /Would write 22 files/)
+      assert.match(stdout, /Would write 23 files/)
       await assert.rejects(() => readFile(join(targetDir, 'AGENTS.md'), 'utf8'), {
         code: 'ENOENT'
       })
@@ -510,7 +510,7 @@ describe('CLI', () => {
         targetDir
       ])
 
-      assert.match(stdout, /Wrote 22 files/)
+      assert.match(stdout, /Wrote 23 files/)
       const verifyScript = await readFile(
         join(targetDir, 'scripts', 'verify-workflow.mjs'),
         'utf8'
