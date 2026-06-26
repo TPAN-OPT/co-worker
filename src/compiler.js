@@ -27,10 +27,19 @@ import {
 } from './organization-renderer.js'
 import { renderWebConsole } from './web-console-renderer.js'
 
-const WORKFLOW_FIELDS = ['name', 'version', 'organization', 'gatePresets', 'roles', 'stages']
+const WORKFLOW_FIELDS = [
+  'name',
+  'version',
+  'organization',
+  'gatePresets',
+  'roles',
+  'stages',
+  'orchestration'
+]
 const ORGANIZATION_FIELDS = ['team', 'policies']
+const ORCHESTRATION_FIELDS = ['agentCommand', 'agents']
 const ROLE_FIELDS = ['description', 'skills', 'permissions']
-const STAGE_FIELDS = ['id', 'owner', 'output', 'required', 'gates']
+const STAGE_FIELDS = ['id', 'owner', 'output', 'required', 'dependsOn', 'gates']
 const GATE_FIELDS = ['id', 'type', 'preset', 'description', 'command']
 
 export function validateWorkflow(input) {
@@ -46,6 +55,7 @@ export function validateWorkflow(input) {
   const gatePresetRegistry = createGatePresetRegistry(input.gatePresets)
   const gatePresets = getCustomGatePresets(gatePresetRegistry)
   const stages = normalizeStages(input.stages, roles, gatePresetRegistry)
+  const orchestration = normalizeOrchestration(input.orchestration, roles)
 
   return deepFreeze({
     name,
@@ -53,8 +63,64 @@ export function validateWorkflow(input) {
     ...(organization ? { organization } : {}),
     gatePresets,
     roles,
-    stages
+    stages,
+    ...(orchestration ? { orchestration } : {})
   })
+}
+
+// The orchestration block lets a workflow persist the harness-neutral agent
+// command the orchestrator should run for --invoke, so operators no longer have
+// to retype --agent-command on every run. `agentCommand` is the default for all
+// stage owners; `agents` overrides it per role, which is how distinct owners can
+// be driven by distinct agent CLIs from a single committed workflow.
+function normalizeOrchestration(orchestration, roles) {
+  if (orchestration === undefined) {
+    return null
+  }
+
+  if (!isPlainObject(orchestration)) {
+    throw new Error('Workflow orchestration must be an object')
+  }
+
+  assertKnownFields(orchestration, ORCHESTRATION_FIELDS, 'Workflow orchestration')
+
+  const hasAgentCommand = orchestration.agentCommand !== undefined
+  const agentCommand = hasAgentCommand
+    ? requireNonEmptyString(orchestration.agentCommand, 'Workflow orchestration agentCommand')
+    : ''
+  const agents = normalizeOrchestrationAgents(orchestration.agents, roles)
+
+  if (!hasAgentCommand && Object.keys(agents).length === 0) {
+    throw new Error('Workflow orchestration must include agentCommand or agents')
+  }
+
+  return {
+    ...(hasAgentCommand ? { agentCommand } : {}),
+    ...(Object.keys(agents).length > 0 ? { agents } : {})
+  }
+}
+
+function normalizeOrchestrationAgents(agents, roles) {
+  if (agents === undefined) {
+    return {}
+  }
+
+  if (!isPlainObject(agents)) {
+    throw new Error('Workflow orchestration agents must be an object')
+  }
+
+  return Object.fromEntries(
+    Object.entries(agents).map(([roleId, command]) => {
+      if (!Object.hasOwn(roles, roleId)) {
+        throw new Error(`Workflow orchestration agents references unknown role "${roleId}"`)
+      }
+
+      return [
+        roleId,
+        requireNonEmptyString(command, `Workflow orchestration agent command for "${roleId}"`)
+      ]
+    })
+  )
 }
 
 function normalizeOrganization(organization) {
@@ -262,6 +328,7 @@ function normalizeStages(stages, roles, gatePresetRegistry) {
   }
 
   const seenStageIds = new Set()
+  let previousStageId = null
   return stages.map((stage) => {
     if (!isPlainObject(stage)) {
       throw new Error('Each workflow stage must be an object')
@@ -274,12 +341,20 @@ function normalizeStages(stages, roles, gatePresetRegistry) {
     if (seenStageIds.has(id)) {
       throw new Error(`Duplicate stage id "${id}"`)
     }
-    seenStageIds.add(id)
 
     const owner = requireNonEmptyString(stage.owner, `Stage "${id}" owner`)
     if (!Object.hasOwn(roles, owner)) {
       throw new Error(`Stage "${id}" references unknown owner "${owner}"`)
     }
+
+    const dependsOn = normalizeStageDependencies(stage.dependsOn, {
+      stageId: id,
+      knownStageIds: seenStageIds,
+      previousStageId
+    })
+
+    seenStageIds.add(id)
+    previousStageId = id
 
     return {
       id,
@@ -291,6 +366,7 @@ function normalizeStages(stages, roles, gatePresetRegistry) {
       required: normalizeStringArray(stage.required, `Stage "${id}" required`, {
         optional: true
       }),
+      dependsOn,
       gates: normalizeGates(
         stage.gates,
         `Stage "${id}" gates`,
@@ -301,6 +377,40 @@ function normalizeStages(stages, roles, gatePresetRegistry) {
       )
     }
   })
+}
+
+// Stage dependencies form the scheduling DAG. A stage may only depend on stages
+// declared before it, which guarantees the workflow array is already a valid
+// topological order and makes cycles impossible. When dependsOn is omitted the
+// stage defaults to depending on the immediately preceding stage, so a plain
+// list of stages stays strictly sequential (backward compatible). An explicit
+// empty array opts a stage out of that default to run as an independent branch.
+function normalizeStageDependencies(dependsOn, { stageId, knownStageIds, previousStageId }) {
+  if (dependsOn === undefined) {
+    return previousStageId ? [previousStageId] : []
+  }
+
+  const ids = normalizeStringArray(dependsOn, `Stage "${stageId}" dependsOn`, {
+    optional: true
+  })
+
+  const seen = new Set()
+  for (const depId of ids) {
+    if (depId === stageId) {
+      throw new Error(`Stage "${stageId}" cannot depend on itself`)
+    }
+    if (!knownStageIds.has(depId)) {
+      throw new Error(
+        `Stage "${stageId}" dependsOn references unknown or later stage "${depId}"`
+      )
+    }
+    if (seen.has(depId)) {
+      throw new Error(`Stage "${stageId}" dependsOn lists "${depId}" more than once`)
+    }
+    seen.add(depId)
+  }
+
+  return ids
 }
 
 function renderAgentsMarkdown(workflow) {

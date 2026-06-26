@@ -17,6 +17,29 @@ const manifest = readManifest()
 const runId = options.runId || createDefaultRunId()
 validateRunId(runId)
 
+// Persisted agent command: the workflow can commit a default --agent-command
+// (and per-role overrides) into the manifest under harnesses.orchestrator, so
+// --invoke does not require retyping a command on every run. A CLI
+// --agent-command still wins, then a per-owner override, then the default.
+const orchestratorConfig = (manifest.harnesses && manifest.harnesses.orchestrator) || {}
+const orchestratorAgents =
+  orchestratorConfig.agents && typeof orchestratorConfig.agents === 'object'
+    ? orchestratorConfig.agents
+    : {}
+const defaultAgentCommand =
+  typeof orchestratorConfig.agentCommand === 'string' ? orchestratorConfig.agentCommand : ''
+
+if (
+  options.invoke &&
+  !options.agentCommand &&
+  !defaultAgentCommand &&
+  Object.keys(orchestratorAgents).length === 0
+) {
+  throw new Error(
+    '--invoke requires --agent-command or a persisted orchestration.agentCommand in the workflow'
+  )
+}
+
 const stateDir = options.stateDir || \`\${STATE_ROOT}/\${runId}\`
 const manualEvidence = options.manualEvidencePath
   ? readManualEvidence(options.manualEvidencePath)
@@ -28,19 +51,26 @@ console.log('TPAN-OPT/CO-WORKER orchestrator')
 console.log(\`Workflow: \${manifest.workflow.name}@\${manifest.workflow.version}\`)
 console.log(\`Run: \${runId}\`)
 
-// Stage-gated state machine. Unlike the verifier, which evaluates every
-// command gate globally, the orchestrator advances one stage at a time and
-// refuses to start a later stage until the current stage's gates all pass.
-// This is the routing + approval boundary: work stops at the first stage that
-// still needs agent action or human approval.
+// DAG-gated scheduler. Unlike the verifier, which evaluates every command gate
+// globally, the orchestrator only starts a stage once all of its dependencies
+// are done. Every ready stage is evaluated, so independent branches owned by
+// different roles surface their work orders in parallel instead of being
+// serialized behind the first incomplete stage. A stage with any unfinished
+// dependency stays pending and its command gates never run — that is the
+// routing + approval boundary, now expressed as the dependency graph. Because a
+// stage may only depend on earlier-declared stages, the manifest array is
+// already a valid topological order and a single pass resolves every stage.
 const stageStates = []
+const statusById = {}
 const invocations = []
-let blocked = false
-let currentStageId = null
 
 for (const stage of manifest.stages) {
-  if (blocked) {
-    stageStates.push(pendingStageState(stage))
+  const dependsOn = Array.isArray(stage.dependsOn) ? stage.dependsOn : []
+  const blockedBy = dependsOn.filter((depId) => statusById[depId] !== 'done')
+
+  if (blockedBy.length > 0) {
+    stageStates.push(pendingStageState(stage, blockedBy))
+    statusById[stage.id] = 'pending'
     continue
   }
 
@@ -52,33 +82,44 @@ for (const stage of manifest.stages) {
   // execution while staying bounded (one invocation per stage per run) and
   // leaving manual approval gates under human control.
   if (!evaluated.done && options.invoke) {
-    invocations.push(invokeAgent(stage, evaluated.state))
+    const agentCommand = resolveAgentCommand(stage.owner)
+    if (!agentCommand) {
+      throw new Error(
+        \`--invoke has no agent command for stage "\${stage.id}" (owner "\${stage.owner}"). Pass --agent-command or set orchestration.agentCommand for that role.\`
+      )
+    }
+    invocations.push(invokeAgent(stage, evaluated.state, agentCommand))
     evaluated = evaluateStage(stage)
   }
 
   stageStates.push(evaluated.state)
-
-  if (!evaluated.done) {
-    blocked = true
-    currentStageId = stage.id
-  }
+  statusById[stage.id] = evaluated.done ? 'done' : 'current'
 }
 
-const workOrder = currentStageId
-  ? buildWorkOrder(stageStates.find((stage) => stage.id === currentStageId), invocations)
-  : null
+// Multiple stages can be "current" at once (parallel work orders across owners).
+// currentStage/workOrder stay as the first frontier for backward compatibility;
+// currentStages/workOrders carry the full set.
+const currentStages = stageStates
+  .filter((stage) => stage.status === 'current')
+  .map((stage) => stage.id)
+const workOrders = currentStages.map((stageId) =>
+  buildWorkOrder(stageStates.find((stage) => stage.id === stageId), invocations)
+)
+const blocked = stageStates.some((stage) => stage.status !== 'done')
 
 const state = {
   schemaVersion: SCHEMA_VERSION,
   workflow: manifest.workflow,
   runId,
   status: blocked ? 'blocked' : 'completed',
-  currentStage: currentStageId,
+  currentStage: currentStages[0] || null,
+  currentStages,
   startedAt,
   finishedAt: new Date().toISOString(),
   stages: stageStates,
   invocations,
-  workOrder
+  workOrder: workOrders[0] || null,
+  workOrders
 }
 
 writeStateArtifacts(stateDir, state)
@@ -119,18 +160,21 @@ function evaluateStage(stage) {
       id: stage.id,
       owner: stage.owner,
       output: stage.output || '',
+      dependsOn: Array.isArray(stage.dependsOn) ? stage.dependsOn : [],
       status: done ? 'done' : 'current',
       gates
     }
   }
 }
 
-function pendingStageState(stage) {
+function pendingStageState(stage, blockedBy = []) {
   return {
     id: stage.id,
     owner: stage.owner,
     output: stage.output || '',
+    dependsOn: Array.isArray(stage.dependsOn) ? stage.dependsOn : [],
     status: 'pending',
+    blockedBy,
     gates: (stage.gates || []).map((gate) => ({
       id: gate.id,
       type: gate.type,
@@ -160,10 +204,23 @@ function runCommandGate(stageId, gate) {
   return { id: gate.id, type: 'command', status: 'passed', exitCode: 0, command }
 }
 
-function invokeAgent(stage, stageState) {
+function resolveAgentCommand(owner) {
+  if (options.agentCommand) {
+    return options.agentCommand
+  }
+
+  const perRole = orchestratorAgents[owner]
+  if (typeof perRole === 'string' && perRole !== '') {
+    return perRole
+  }
+
+  return defaultAgentCommand
+}
+
+function invokeAgent(stage, stageState, agentCommand) {
   const workOrder = buildWorkOrder(stageState)
   const briefPath = writeBrief(stage.id, workOrder)
-  const command = renderAgentCommand(options.agentCommand, {
+  const command = renderAgentCommand(agentCommand, {
     stage: stage.id,
     role: stage.owner,
     brief: briefPath
@@ -338,31 +395,36 @@ function syncConsoleOrchestration(value) {
 
 function renderStateMarkdown(value) {
   const stageRows = value.stages
-    .map((stage) => \`| \${stage.id} | \${stage.owner} | \${stage.status} |\`)
+    .map(
+      (stage) =>
+        \`| \${stage.id} | \${stage.owner} | \${stage.status} | \${formatInlineList(stage.dependsOn || [])} |\`
+    )
     .join('\\n')
 
   const invocationRows = (value.invocations || [])
     .map((item) => \`| \${item.stageId} | \${item.role} | \${item.status} | \${item.exitCode} |\`)
     .join('\\n')
 
-  const workOrderSection = value.workOrder
-    ? renderWorkOrderMarkdown(value.workOrder)
-    : 'All stages complete. No open work order.\\n'
+  const workOrders = value.workOrders || (value.workOrder ? [value.workOrder] : [])
+  const workOrderSection =
+    workOrders.length > 0
+      ? workOrders.map(renderWorkOrderMarkdown).join('\\n')
+      : 'All stages complete. No open work order.\\n'
 
   return \`# TPAN-OPT/CO-WORKER Orchestration State
 
 - Workflow: \${value.workflow.name}@\${value.workflow.version}
 - Run: \${value.runId}
 - Status: \${value.status}
-- Current stage: \${value.currentStage || 'none'}
+- Current stages: \${formatInlineList(value.currentStages || (value.currentStage ? [value.currentStage] : []))}
 - startedAt: \${value.startedAt}
 - finishedAt: \${value.finishedAt}
 
 ## Stages
 
-| Stage | Owner | Status |
-| --- | --- | --- |
-\${stageRows || '| - | - | none |'}
+| Stage | Owner | Status | Depends on |
+| --- | --- | --- | --- |
+\${stageRows || '| - | - | none | - |'}
 
 ## Agent Invocations
 
@@ -370,7 +432,7 @@ function renderStateMarkdown(value) {
 | --- | --- | --- | --- |
 \${invocationRows || '| - | - | none | - |'}
 
-## Work Order
+## Work Orders
 
 \${workOrderSection}\`
 }
@@ -380,7 +442,9 @@ function renderWorkOrderMarkdown(workOrder) {
     .map((gate) => \`| \${gate.id} | \${gate.type} | \${gate.status} | \${gate.reason} |\`)
     .join('\\n')
 
-  return \`- Stage: \\\`\${workOrder.stageId}\\\`
+  return \`### Work order: \${workOrder.stageId}
+
+- Stage: \\\`\${workOrder.stageId}\\\`
 - Owner: \\\`\${workOrder.owner}\\\`
 - Output: \${workOrder.output ? \`\\\`\${workOrder.output}\\\`\` : 'none'}
 - Skills: \${formatInlineList(workOrder.role.skills)}
@@ -409,8 +473,12 @@ function printSummary(value) {
   if (value.invocations && value.invocations.length > 0) {
     console.log(\`Agent invocations: \${value.invocations.length}\`)
   }
-  if (value.workOrder) {
-    console.log(\`Next: \${value.workOrder.nextAction}\`)
+  const workOrders = value.workOrders || (value.workOrder ? [value.workOrder] : [])
+  if (workOrders.length > 0) {
+    console.log(\`Open work orders: \${workOrders.length}\`)
+    for (const workOrder of workOrders) {
+      console.log(\`Next [\${workOrder.stageId}]: \${workOrder.nextAction}\`)
+    }
   } else {
     console.log('All stages complete.')
   }
@@ -518,10 +586,6 @@ function parseArgs(args) {
     throw new Error(\`Unknown option "\${arg}"\`)
   }
 
-  if (parsed.invoke && !parsed.agentCommand) {
-    throw new Error('--invoke requires --agent-command')
-  }
-
   return parsed
 }
 
@@ -539,7 +603,8 @@ function projectPath(...segments) {
 }
 
 function printHelp() {
-  console.log('Usage: node scripts/orchestrate-workflow.mjs [--run-id local] [--manual-evidence manual-evidence.json] [--state-dir .tpan-opt-co-worker/orchestrations/<id>] [--invoke --agent-command "<cmd with {stage} {role} {brief}>"]')
+  console.log('Usage: node scripts/orchestrate-workflow.mjs [--run-id local] [--manual-evidence manual-evidence.json] [--state-dir .tpan-opt-co-worker/orchestrations/<id>] [--invoke [--agent-command "<cmd with {stage} {role} {brief}>"]]')
+  console.log('When the workflow persists orchestration.agentCommand (or per-role orchestration.agents), --invoke can omit --agent-command and the persisted command is used; --agent-command overrides it.')
 }
 `
 }

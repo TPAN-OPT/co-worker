@@ -35,15 +35,25 @@ export function renderOrchestrationRuntime() {
       const safeStatus = status === 'completed' ? 'passed' : status === 'blocked' ? 'failed' : 'pending'
       const stages = Array.isArray(state.stages) ? state.stages : []
       const invocations = Array.isArray(state.invocations) ? state.invocations : []
+      const currentStages = Array.isArray(state.currentStages)
+        ? state.currentStages
+        : state.currentStage
+          ? [state.currentStage]
+          : []
+      const workOrders = Array.isArray(state.workOrders)
+        ? state.workOrders
+        : state.workOrder
+          ? [state.workOrder]
+          : []
 
       container.className = ''
       container.innerHTML =
         '<div class="orchestration-head">' +
           '<span class="status ' + safeStatus + '">' + escapeHtml(status) + '</span>' +
-          '<p class="muted">Run ' + escapeHtml(state.runId || 'unknown') + ' · current stage: ' + escapeHtml(state.currentStage || 'none') + '</p>' +
+          '<p class="muted">Run ' + escapeHtml(state.runId || 'unknown') + ' · current stages: ' + escapeHtml(currentStages.length ? currentStages.join(', ') : 'none') + '</p>' +
         '</div>' +
         stages.map(renderOrchestrationStage).join('') +
-        renderWorkOrder(state.workOrder) +
+        workOrders.map(renderWorkOrder).join('') +
         renderInvocations(invocations)
     }
 

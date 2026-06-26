@@ -45,7 +45,13 @@ export function renderWorkflowManifest(workflow) {
       },
       orchestrator: {
         script: 'scripts/orchestrate-workflow.mjs',
-        stateDir: '.tpan-opt-co-worker/orchestrations'
+        stateDir: '.tpan-opt-co-worker/orchestrations',
+        ...(workflow.orchestration?.agentCommand
+          ? { agentCommand: workflow.orchestration.agentCommand }
+          : {}),
+        ...(workflow.orchestration?.agents
+          ? { agents: workflow.orchestration.agents }
+          : {})
       },
       webConsole: {
         index: '.tpan-opt-co-worker/console/index.html',
