@@ -506,7 +506,13 @@ tpan-opt-co-worker policies [--json]
 tpan-opt-co-worker teams [--json]
 tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
 tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
+tpan-opt-co-worker status [--out .]
+tpan-opt-co-worker next [--out .]
+tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
+tpan-opt-co-worker mcp
 ```
+
+`status`, `next`, and `approve` drive a compiled repository from the command line. `status` prints the workflow and each stage's orchestration status; `next` prints the open work order(s) and the next action; `approve <gate> --by <approver>` records approver evidence for a manual gate and advances the orchestrator — so you never hand-edit `manual-evidence.json`. Pass `--stage` when a gate id is reused across stages. These share their core with the MCP `co_worker_next` / `co_worker_approve` tools, so the CLI and in-agent flows behave identically. `mcp` runs the MCP server (see [Install as a plugin (MCP)](#install-as-a-plugin-mcp)).
 
 `quickstart` is the one-command onboarding path: it runs the same scaffolding as `init`, then immediately compiles every harness asset and (unless `--no-demo`) runs a demo orchestration with the first stage pre-approved, so the generated console shows live stage progress the moment you open it. It defaults to the `minimal` template so it works in any empty directory with zero external gates. The CLI `compile` step remains the authoritative path for applying edited workflows.
 
@@ -803,6 +809,7 @@ Custom preset names cannot override built-in preset names.
 - [x] Make the web console Workflow Designer editable with in-browser draft validation and JSON export.
 - [x] Add a one-command quickstart that scaffolds, compiles, and seeds a demo run for an immediately populated console.
 - [x] Ship a zero-dependency MCP server (quickstart, compile, validate, catalog, next, approve) so co-worker installs as a plugin in Codex, Claude Code, and MCP-capable agents.
+- [x] Add first-class `status`, `next`, and `approve` CLI subcommands that drive and approve workflows without hand-editing evidence files.
 - [x] Add marketplace catalog discovery for skills, MCP servers, and hooks.
 - [x] Add a web console for workflow design and run tracking.
 - [x] Add organization-level templates, policies, and reusable agent teams.
