@@ -22,7 +22,7 @@ TPAN-OPT/CO-WORKER turns a team's operating method into a versioned, executable 
 
 The current package is a no-dependency Node.js workflow compiler, local verifier, local runner, stage-gated execution orchestrator, and static workflow console. It validates JSON workflow definitions, generates repository-local harness assets, runs staged verification gates, advances a stage-by-stage state machine that stops at the first unsatisfied gate and emits a work order, records evidence, and syncs local run history into the generated console.
 
-The broader team operating system language in this README describes the product direction. The execution orchestrator routes and gates work and can drive the current stage's owner agent through an opt-in, harness-neutral `--invoke`/`--agent-command` adapter, but it does not yet schedule or coordinate agents autonomously. Hosted orchestration, marketplace package installation, and YAML authoring are not part of the current package yet.
+The broader team operating system language in this README describes the product direction. The execution orchestrator routes and gates work along a stage dependency graph — scheduling independent branches across owners in parallel — and can drive a stage's owner agent through an opt-in, harness-neutral `--invoke`/`--agent-command` adapter, but it does not yet execute gates concurrently or coordinate agents fully autonomously. Hosted orchestration, marketplace package installation, and YAML authoring are not part of the current package yet.
 
 ## What TPAN-OPT/CO-WORKER Provides
 
@@ -525,13 +525,28 @@ node scripts/list-runs.mjs
 node scripts/list-runs.mjs --json
 ```
 
-The generated execution orchestrator is a stage-gated state machine. Unlike the verifier, which evaluates every command gate globally, the orchestrator walks stages in order and refuses to start a later stage until the current stage's gates all pass. It stops at the first stage whose gates are unsatisfied — the routing and approval boundary — and emits a work order for that stage's owner role: the role's skills and permissions, the per-harness agent file to drive (`.claude/agents/<role>.md`, `.codex/agents/<role>.toml`, `.opencode/agents/<role>.md`), the stage's required work, the pending gates, and the next action. State is written to `.tpan-opt-co-worker/orchestrations/<run-id>/state.json` and a human-readable `state.md`. The script exits non-zero while the workflow is blocked and exits zero only when every stage is complete, so it can gate CI:
+The generated execution orchestrator is a dependency-gated state machine. Unlike the verifier, which evaluates every command gate globally, the orchestrator only starts a stage once all of its dependencies are done, and it emits a work order for every stage whose dependencies are satisfied: the role's skills and permissions, the per-harness agent file to drive (`.claude/agents/<role>.md`, `.codex/agents/<role>.toml`, `.opencode/agents/<role>.md`), the stage's required work, the pending gates, and the next action. State is written to `.tpan-opt-co-worker/orchestrations/<run-id>/state.json` and a human-readable `state.md`. The script exits non-zero while the workflow is blocked and exits zero only when every stage is complete, so it can gate CI:
 
 ```bash
 node scripts/orchestrate-workflow.mjs \
   --run-id feature-001 \
   --manual-evidence examples/manual-evidence.json
 ```
+
+Stages declare dependencies with an optional `dependsOn` array of earlier stage ids; the array stays a valid topological order because a stage may only depend on stages declared before it (cycles are impossible). When `dependsOn` is omitted a stage defaults to depending on the immediately preceding stage, so a plain list of stages stays strictly sequential — the routing and approval boundary then sits at the first unsatisfied stage, exactly as before. Declaring dependencies turns the list into a DAG: stages that fan out from a shared prerequisite are scheduled in parallel, so several owners can hold open work orders at once (`state.currentStages` / `state.workOrders` carry the full set, with `currentStage` / `workOrder` kept as the first frontier for compatibility). A stage with any unfinished dependency stays `pending` and its command gates never run. Use an explicit empty `dependsOn: []` to opt a stage out of the sequential default and start it as an independent branch.
+
+```json
+{
+  "stages": [
+    { "id": "plan", "owner": "planner", "gates": ["scope_confirmed"] },
+    { "id": "backend", "owner": "backend-eng", "dependsOn": ["plan"], "gates": ["api_tests"] },
+    { "id": "frontend", "owner": "frontend-eng", "dependsOn": ["plan"], "gates": ["ui_tests"] },
+    { "id": "integrate", "owner": "release", "dependsOn": ["backend", "frontend"], "gates": ["human_approval"] }
+  ]
+}
+```
+
+Command gates still run sequentially within a single process (the orchestrator does not yet execute gates concurrently); parallelism here means independent branches are routed and surfaced together rather than artificially serialized behind the first incomplete stage.
 
 The orchestrator can also drive the current stage's owner agent. Pass `--invoke` with a harness-neutral `--agent-command` template and the orchestrator, when it reaches an unsatisfied stage, writes a work-order brief to `brief-<stage>.json`, runs the command once for that stage's owner, then re-evaluates the stage's gates and advances if they now pass. The command template substitutes `{stage}`, `{role}`, and `{brief}`, and the same values are exported as `TPAN_OPT_STAGE`, `TPAN_OPT_ROLE`, and `TPAN_OPT_BRIEF` environment variables, so any agent CLI (Claude Code, Codex, OpenCode, or a custom runner) can be wired in without locking the workflow to one harness:
 
@@ -544,6 +559,19 @@ node scripts/orchestrate-workflow.mjs \
 ```
 
 Agent invocation is opt-in because it can change the repository and incur cost, is bounded to one invocation per stage per run, and never satisfies manual gates: agents cannot self-approve, so human approval gates still block until evidence is attached. Each invocation is recorded in `invocation-<stage>.json` and the run `state.json`.
+
+The agent command can also be persisted into the workflow so operators do not retype it on every run. Add an `orchestration` block with a default `agentCommand` template and optional per-role `agents` overrides; the compiler validates it and writes it into the manifest under `harnesses.orchestrator`. The orchestrator then resolves the command for each stage owner with the precedence CLI `--agent-command` → per-role `agents[owner]` → default `agentCommand`, so `--invoke` works with no flags when a command is committed, while a CLI flag still overrides for one-off runs:
+
+```json
+{
+  "orchestration": {
+    "agentCommand": "claude -p \"Complete stage {role} using brief {brief}\"",
+    "agents": {
+      "engineer": "codex exec --brief {brief}"
+    }
+  }
+}
+```
 
 The orchestrator also mirrors its latest state into the static console at `.tpan-opt-co-worker/console/orchestration.json` and `.tpan-opt-co-worker/console/orchestration.js`. The console's Orchestration panel renders the run status, current stage, per-stage progress, the open work order (owner, pending gates, next action), and recent agent invocations, with `orchestration.js` as the default data source and `orchestration.json` as a fetch fallback.
 
@@ -685,6 +713,8 @@ Custom preset names cannot override built-in preset names.
 - [x] Add local runner harness adapter generation.
 - [x] Add a stage-gated execution orchestrator that routes work and emits per-stage work orders.
 - [x] Add opt-in, harness-neutral agent invocation that drives the current stage's owner agent and re-gates.
+- [x] Persist the orchestrator agent command (default and per-role) into the workflow and manifest.
+- [x] Schedule independent stages in parallel via a stage dependency graph with multi-owner work orders.
 - [x] Surface orchestration state, work orders, and agent invocations in the static web console.
 - [x] Add GitHub Actions template generation.
 - [x] Add GitLab CI template generation.

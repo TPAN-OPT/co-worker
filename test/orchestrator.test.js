@@ -266,6 +266,92 @@ describe('generated orchestrator script', () => {
     }
   })
 
+  it('uses the persisted orchestration.agentCommand when --invoke omits --agent-command', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+
+    try {
+      const workflow = invokeWorkflow()
+      workflow.orchestration = {
+        agentCommand: 'node -e "require(\'node:fs\').writeFileSync(\'flag.txt\',\'done\')"'
+      }
+      await writeCompiledOutputs(compileWorkflow(workflow), targetDir, { force: true })
+
+      const { stdout } = await execFileAsync(
+        'node',
+        [join(targetDir, 'scripts', 'orchestrate-workflow.mjs'), '--run-id', 'persisted', '--invoke'],
+        { cwd: targetDir }
+      )
+
+      const state = await readState(targetDir, 'persisted')
+      assert.equal(state.status, 'completed')
+      assert.equal(state.invocations.length, 1)
+      assert.equal(state.invocations[0].status, 'completed')
+      assert.match(stdout, /invoke:engineer/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('uses a per-role orchestration.agents command for the stage owner', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+
+    try {
+      const workflow = invokeWorkflow()
+      workflow.orchestration = {
+        agents: {
+          engineer: 'node -e "require(\'node:fs\').writeFileSync(\'flag.txt\',\'done\')"'
+        }
+      }
+      await writeCompiledOutputs(compileWorkflow(workflow), targetDir, { force: true })
+
+      await execFileAsync(
+        'node',
+        [join(targetDir, 'scripts', 'orchestrate-workflow.mjs'), '--run-id', 'per-role', '--invoke'],
+        { cwd: targetDir }
+      )
+
+      const state = await readState(targetDir, 'per-role')
+      assert.equal(state.status, 'completed')
+      assert.equal(state.invocations[0].role, 'engineer')
+      assert.match(state.invocations[0].command, /writeFileSync\('flag\.txt'/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('lets a CLI --agent-command override the persisted command', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+
+    try {
+      const workflow = invokeWorkflow()
+      // The persisted command writes the wrong file and would never satisfy the
+      // gate; the CLI override must win and complete the stage.
+      workflow.orchestration = {
+        agentCommand: 'node -e "require(\'node:fs\').writeFileSync(\'wrong.txt\',\'no\')"'
+      }
+      await writeCompiledOutputs(compileWorkflow(workflow), targetDir, { force: true })
+
+      await execFileAsync(
+        'node',
+        [
+          join(targetDir, 'scripts', 'orchestrate-workflow.mjs'),
+          '--run-id',
+          'override',
+          '--invoke',
+          '--agent-command',
+          'node -e "require(\'node:fs\').writeFileSync(\'flag.txt\',\'done\')"'
+        ],
+        { cwd: targetDir }
+      )
+
+      const state = await readState(targetDir, 'override')
+      assert.equal(state.status, 'completed')
+      assert.match(state.invocations[0].command, /writeFileSync\('flag\.txt'/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects unsafe run ids', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
 
@@ -283,6 +369,70 @@ describe('generated orchestrator script', () => {
           ),
         /--run-id may only contain/
       )
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('schedules independent stages in parallel after a shared dependency', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(parallelWorkflow()), targetDir, { force: true })
+
+      const error = await runOrchestrator(targetDir, ['--run-id', 'fanout'])
+      assert.equal(error.code, 1)
+
+      const state = await readState(targetDir, 'fanout')
+      assert.equal(state.status, 'blocked')
+
+      const byId = Object.fromEntries(state.stages.map((stage) => [stage.id, stage]))
+      assert.equal(byId.plan.status, 'done')
+      // Both branches off the shared `plan` stage are active at once, owned by
+      // different roles — this is the multi-owner parallel scheduling.
+      assert.equal(byId.backend.status, 'current')
+      assert.equal(byId.frontend.status, 'current')
+      assert.equal(byId.integrate.status, 'pending')
+
+      assert.deepEqual(state.currentStages, ['backend', 'frontend'])
+      assert.equal(state.workOrders.length, 2)
+      assert.deepEqual(
+        state.workOrders.map((order) => order.owner).sort(),
+        ['backend', 'frontend']
+      )
+      // The join stage stays pending until both branches finish, and its gate
+      // never ran (no command side effects ahead of its dependencies).
+      assert.deepEqual(byId.integrate.blockedBy.sort(), ['backend', 'frontend'])
+      assert.equal(gateStatus(byId.integrate, 'integration_approved'), 'not_started')
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('advances to the join stage once both parallel branches are done', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(parallelWorkflow()), targetDir, { force: true })
+      const evidencePath = await writeEvidence(targetDir, {
+        backend_approved: { approvedBy: 'backend-lead@example.com' },
+        frontend_approved: { approvedBy: 'frontend-lead@example.com' }
+      })
+
+      const error = await runOrchestrator(targetDir, [
+        '--run-id',
+        'joined',
+        '--manual-evidence',
+        evidencePath
+      ])
+      assert.equal(error.code, 1)
+
+      const state = await readState(targetDir, 'joined')
+      const byId = Object.fromEntries(state.stages.map((stage) => [stage.id, stage]))
+      assert.equal(byId.backend.status, 'done')
+      assert.equal(byId.frontend.status, 'done')
+      assert.equal(byId.integrate.status, 'current')
+      assert.deepEqual(state.currentStages, ['integrate'])
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
@@ -319,6 +469,47 @@ async function writeEvidence(targetDir, gates) {
 
 function gateStatus(stage, gateId) {
   return stage.gates.find((gate) => gate.id === gateId)?.status
+}
+
+function parallelWorkflow() {
+  const role = { skills: ['verification-loop'], permissions: ['write_code'] }
+  return {
+    name: 'parallel-workflow',
+    version: '1.0.0',
+    roles: {
+      planner: role,
+      backend: role,
+      frontend: role,
+      integrator: role
+    },
+    stages: [
+      {
+        id: 'plan',
+        owner: 'planner',
+        gates: [{ id: 'plan_ready', type: 'command', command: 'node -e "process.exit(0)"' }]
+      },
+      {
+        id: 'backend',
+        owner: 'backend',
+        dependsOn: ['plan'],
+        gates: [{ id: 'backend_approved', type: 'manual', description: 'Backend signed off.' }]
+      },
+      {
+        id: 'frontend',
+        owner: 'frontend',
+        dependsOn: ['plan'],
+        gates: [{ id: 'frontend_approved', type: 'manual', description: 'Frontend signed off.' }]
+      },
+      {
+        id: 'integrate',
+        owner: 'integrator',
+        dependsOn: ['backend', 'frontend'],
+        gates: [
+          { id: 'integration_approved', type: 'manual', description: 'Integration signed off.' }
+        ]
+      }
+    ]
+  }
 }
 
 function invokeWorkflow({ withManual = false } = {}) {

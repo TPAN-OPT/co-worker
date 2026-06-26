@@ -53,6 +53,22 @@ export function renderWorkflowSchema() {
           $ref: '#/$defs/stage',
           required: ['id', 'owner']
         }
+      },
+      orchestration: {
+        type: 'object',
+        additionalProperties: false,
+        minProperties: 1,
+        properties: {
+          agentCommand: nonEmptyString(
+            'Default --invoke agent command template ({stage}, {role}, {brief}).'
+          ),
+          agents: {
+            type: 'object',
+            additionalProperties: nonEmptyString(
+              'Per-role agent command template that overrides agentCommand.'
+            )
+          }
+        }
       }
     },
     $defs: {
@@ -78,6 +94,11 @@ export function renderWorkflowSchema() {
             type: 'string'
           },
           required: stringArray(),
+          dependsOn: {
+            ...stringArray(),
+            description:
+              'Stage ids (declared earlier) that must be done before this stage starts. Omit for sequential default; use [] for an independent branch.'
+          },
           gates: {
             type: 'array',
             items: {

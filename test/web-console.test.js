@@ -80,6 +80,49 @@ describe('generated web console runtime', () => {
     assert.match(html, /Attach approval evidence/)
   })
 
+  it('renders multiple parallel work orders across owners', () => {
+    const outputs = compileWorkflow(webConsoleWorkflow())
+    const webConsole = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/index.html'
+    )
+    const harness = createWebConsoleHarness(
+      { runs: [], details: {} },
+      {
+        current: {
+          status: 'blocked',
+          runId: 'orch-2',
+          currentStages: ['backend', 'frontend'],
+          stages: [
+            { id: 'backend', owner: 'backend', status: 'current' },
+            { id: 'frontend', owner: 'frontend', status: 'current' }
+          ],
+          invocations: [],
+          workOrders: [
+            {
+              stageId: 'backend',
+              owner: 'backend',
+              pendingGates: [{ id: 'backend_approved', type: 'manual' }],
+              nextAction: 'Attach approval evidence for manual gate(s): backend_approved.'
+            },
+            {
+              stageId: 'frontend',
+              owner: 'frontend',
+              pendingGates: [{ id: 'frontend_approved', type: 'manual' }],
+              nextAction: 'Attach approval evidence for manual gate(s): frontend_approved.'
+            }
+          ]
+        }
+      }
+    )
+
+    vm.runInNewContext(extractConsoleScript(webConsole.content), harness.context)
+
+    const html = harness.elements.orchestration.innerHTML
+    assert.match(html, /current stages: backend, frontend/)
+    assert.match(html, /Work Order · backend/)
+    assert.match(html, /Work Order · frontend/)
+  })
+
   it('emits empty orchestration placeholders for a clean first load', () => {
     const outputs = compileWorkflow(webConsoleWorkflow())
     const script = outputs.find(
