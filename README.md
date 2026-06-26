@@ -49,7 +49,15 @@ Run the test suite:
 npm test
 ```
 
-Create a starter workflow in a target repository:
+The fastest path — one command from zero to a populated console:
+
+```bash
+node src/cli.js quickstart --out /path/to/target-repo --name my-workflow
+```
+
+`quickstart` scaffolds `opt.workflow.json`, compiles every harness asset, and runs a demo orchestration with the first stage pre-approved, then prints the path to open `.tpan-opt-co-worker/console/index.html`. The console already shows live stage progress — the first stage done and the next as an open work order — so you see the system working before learning any of the individual commands. Add `--no-demo` to scaffold and compile without the demo run, or `--template production-feature` for the fuller delivery workflow.
+
+For more control, the lower-level commands are still available. Create a starter workflow in a target repository:
 
 ```bash
 node src/cli.js init --out /path/to/target-repo --name production-feature-workflow
@@ -434,6 +442,7 @@ GitHub Actions runs the same quality gates on `main` pushes and pull requests fo
 ## Current CLI
 
 ```text
+tpan-opt-co-worker quickstart --out . [--template minimal] [--team product-delivery] [--name my-workflow] [--no-demo] [--force]
 tpan-opt-co-worker init --out . [--template production-feature] [--team product-delivery] [--policy quality-standard] [--name production-feature-workflow] [--force]
 tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
 tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
@@ -445,6 +454,8 @@ tpan-opt-co-worker teams [--json]
 tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
 tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
 ```
+
+`quickstart` is the one-command onboarding path: it runs the same scaffolding as `init`, then immediately compiles every harness asset and (unless `--no-demo`) runs a demo orchestration with the first stage pre-approved, so the generated console shows live stage progress the moment you open it. It defaults to the `minimal` template so it works in any empty directory with zero external gates. The CLI `compile` step remains the authoritative path for applying edited workflows.
 
 `init` writes a starter `opt.workflow.json` from a named workflow template. The default `production-feature` template includes planner, engineer, reviewer, and release-manager roles plus a production delivery flow. Passing `--team <id>` uses the reusable team's recommended template unless `--template` is also set, and records `organization.team` plus recommended policy ids in the generated workflow. Passing `--policy <id>` appends validated organization policy packs; repeated policies are deduplicated while preserving order. When a selected policy contributes an automatable rule (currently `dependency_audit` from `security-baseline`), `init` injects a dedicated `policy_compliance` stage with the matching command gate (for example `npm:audit-high`) ahead of the final stage, so the rule is enforced during verification rather than only documented. Non-automatable rules stay advisory prompt text in the generated instructions. It refuses to overwrite an existing workflow unless `--force` is provided.
 
@@ -737,6 +748,7 @@ Custom preset names cannot override built-in preset names.
 - [x] Add generated web console gate evidence metadata.
 - [x] Add generated web console run artifact links.
 - [x] Make the web console Workflow Designer editable with in-browser draft validation and JSON export.
+- [x] Add a one-command quickstart that scaffolds, compiles, and seeds a demo run for an immediately populated console.
 - [x] Add marketplace catalog discovery for skills, MCP servers, and hooks.
 - [x] Add a web console for workflow design and run tracking.
 - [x] Add organization-level templates, policies, and reusable agent teams.
