@@ -1,0 +1,14 @@
+{
+  "name": "tpan-opt-co-worker",
+  "owner": {
+    "name": "TPAN-OPT/CO-WORKER",
+    "url": "https://github.com/TPAN-OPT/co-worker"
+  },
+  "plugins": [
+    {
+      "name": "tpan-opt-co-worker",
+      "source": "./",
+      "description": "Workflow compiler and orchestrator exposed as MCP tools (quickstart, compile, validate, catalog, next, approve) for Claude Code."
+    }
+  ]
+}

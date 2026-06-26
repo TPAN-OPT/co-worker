@@ -28,6 +28,8 @@
     "scripts",
     "test",
     "examples",
+    ".claude-plugin",
+    ".mcp.json",
     "README.md",
     "README.zh-CN.md",
     "LICENSE"
