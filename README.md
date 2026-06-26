@@ -36,28 +36,33 @@ The broader team operating system language in this README describes the product 
 
 ## Quick Start
 
-TPAN-OPT/CO-WORKER currently ships a no-dependency Node.js workflow compiler.
+TPAN-OPT/CO-WORKER is a no-dependency Node.js CLI. You need Node.js 22+ and npm 10+.
 
-Requirements:
-
-- Node.js 22 or newer
-- npm 10 or newer
-
-Run the test suite:
-
-```bash
-npm test
-```
-
-The fastest path — one command from zero to a populated console:
+The quick start is a single command — from an empty directory to a working, populated console:
 
 ```bash
 node src/cli.js quickstart --out /path/to/target-repo --name my-workflow
 ```
 
-`quickstart` scaffolds `opt.workflow.json`, compiles every harness asset, and runs a demo orchestration with the first stage pre-approved, then prints the path to open `.tpan-opt-co-worker/console/index.html`. The console already shows live stage progress — the first stage done and the next as an open work order — so you see the system working before learning any of the individual commands. Add `--no-demo` to scaffold and compile without the demo run, or `--template production-feature` for the fuller delivery workflow.
+It scaffolds `opt.workflow.json`, compiles every harness asset, and runs a demo orchestration with the first stage pre-approved. Open the path it prints:
 
-For more control, the lower-level commands are still available. Create a starter workflow in a target repository:
+```bash
+open /path/to/target-repo/.tpan-opt-co-worker/console/index.html
+```
+
+The console opens already populated — the first stage `done` and the next as an open work order — so you see the system working before learning any other command. Add `--no-demo` to skip the demo run, or `--template production-feature` for the fuller delivery workflow.
+
+To change the workflow, edit it in the console Designer (or `opt.workflow.json`) and re-apply:
+
+```bash
+node src/cli.js compile --workflow /path/to/target-repo/opt.workflow.json --out /path/to/target-repo --force
+```
+
+### More commands (reference)
+
+The commands below give finer control over the same pipeline; the full surface is documented under [Current CLI](#current-cli). To develop this repository itself, run `npm test`.
+
+Create a starter workflow in a target repository without compiling or running a demo:
 
 ```bash
 node src/cli.js init --out /path/to/target-repo --name production-feature-workflow
