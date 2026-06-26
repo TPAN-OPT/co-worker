@@ -58,6 +58,18 @@ To change the workflow, edit it in the console Designer (or `opt.workflow.json`)
 node src/cli.js compile --workflow /path/to/target-repo/opt.workflow.json --out /path/to/target-repo --force
 ```
 
+### See each capability in action
+
+The quickstart repo already contains a working example of everything in the "What TPAN-OPT/CO-WORKER Provides" list above. Run the `node src/cli.js …` commands from this tool's directory, and the `node scripts/…` commands from inside the generated target repo:
+
+- **Workflow Designer** — edit stages, roles, gates, and approvals in the console Designer panel or `opt.workflow.json`, then check it: `node src/cli.js validate --workflow /path/to/target-repo/opt.workflow.json`.
+- **Agent Team Builder** — each role compiles to a per-harness agent file (`.claude/agents/<role>.md`, `.codex/agents/<role>.toml`, `.opencode/agents/<role>.md`); browse reusable teams with `node src/cli.js teams`.
+- **Skill / MCP / Hook registry** — `node src/cli.js catalog` lists templates, policy packs, and teams; `node src/cli.js marketplace` lists skills, MCP servers, and hooks; `node src/cli.js presets` lists gate presets.
+- **Harness adapter layer** — one workflow fans out to every harness; see the generated files with `ls .codex .claude .cursor opencode.json .github/workflows scripts`.
+- **Quality gates** — `node scripts/verify-workflow.mjs` runs the stage gates and stops at the first failing or unmet one.
+- **Evidence chain** — `node scripts/run-workflow.mjs --run-id local` records `.tpan-opt-co-worker/runs/local/evidence.json` and `summary.md`.
+- **OPT Runtime** — `node scripts/orchestrate-workflow.mjs --run-id local` routes stages across owners and emits the next work order (this is what the quickstart demo seeded).
+
 ### More commands (reference)
 
 The commands below give finer control over the same pipeline; the full surface is documented under [Current CLI](#current-cli). To develop this repository itself, run `npm test`.
