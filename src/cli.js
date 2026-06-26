@@ -15,6 +15,7 @@ import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { runInit, runQuickstart } from './init-commands.js'
 import { runMcpServer } from './mcp-server.js'
+import { runApprove, runNext, runStatus } from './ops-commands.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
 
 async function main(argv) {
@@ -82,6 +83,21 @@ async function main(argv) {
 
   if (command === 'mcp') {
     await runMcpServer()
+    return
+  }
+
+  if (command === 'status') {
+    await runStatus(argv.slice(3))
+    return
+  }
+
+  if (command === 'next') {
+    await runNext(argv.slice(3))
+    return
+  }
+
+  if (command === 'approve') {
+    await runApprove(argv.slice(3))
     return
   }
 
@@ -425,10 +441,16 @@ Usage:
   tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
   tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
   tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
+  tpan-opt-co-worker status [--out .]
+  tpan-opt-co-worker next [--out .]
+  tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
   tpan-opt-co-worker mcp
 
 Commands:
   quickstart Scaffold, compile, and seed a demo run so the console works immediately.
+  status     Show the compiled workflow and per-stage orchestration status.
+  next       Show the open work order(s) and the next action.
+  approve    Approve a manual gate (record evidence) and advance the orchestrator.
   mcp        Run the MCP server (stdio) so Codex, Claude Code, and MCP-capable agents can call co-worker tools.
   init       Create a starter opt.workflow.json template.
   validate   Validate a workflow definition without writing generated assets.

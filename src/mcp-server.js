@@ -1,12 +1,12 @@
 import { createInterface } from 'node:readline'
-import { spawnSync } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 
 import pkg from '../package.json' with { type: 'json' }
 import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { quickstartProject } from './init-commands.js'
+import { approveGate, nextWorkOrder } from './ops-commands.js'
 import { createCatalog } from './catalog-renderer.js'
 
 // Hand-written, zero-dependency Model Context Protocol server. MCP's stdio
@@ -257,12 +257,8 @@ function catalogTool() {
 
 async function nextTool(args) {
   requireString(args.out, 'out')
-  const state = await readOrchestrationState(args.out)
-  if (!state) {
-    return textResult('No orchestration run recorded yet. Run co_worker_quickstart or orchestrate first.')
-  }
-
-  return textResult(renderOrchestrationSummary(state))
+  const result = await nextWorkOrder(args.out)
+  return textResult(result.text)
 }
 
 async function approveTool(args) {
@@ -270,74 +266,15 @@ async function approveTool(args) {
   requireString(args.gate, 'gate')
   requireString(args.approvedBy, 'approvedBy')
 
-  const targetDir = resolve(args.out)
-  const evidencePath = resolve(targetDir, '.tpan-opt-co-worker', 'manual-evidence.json')
-  const evidence = await readEvidence(evidencePath)
-  const key = typeof args.stage === 'string' && args.stage ? `${args.stage}.${args.gate}` : args.gate
-  evidence.gates[key] = {
+  const result = await approveGate({
+    out: args.out,
+    gate: args.gate,
+    stage: typeof args.stage === 'string' ? args.stage : '',
     approvedBy: args.approvedBy,
-    ...(typeof args.note === 'string' && args.note ? { note: args.note } : {})
-  }
-
-  await mkdir(dirname(evidencePath), { recursive: true })
-  await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8')
-
-  const runId = typeof args.runId === 'string' && args.runId ? args.runId : 'local'
-  const scriptPath = resolve(targetDir, 'scripts', 'orchestrate-workflow.mjs')
-  const run = spawnSync(
-    process.execPath,
-    [scriptPath, '--run-id', runId, '--manual-evidence', evidencePath],
-    { cwd: targetDir, encoding: 'utf8' }
-  )
-
-  if (run.error) {
-    return textResult(
-      `Recorded approval for ${key} by ${args.approvedBy}, but could not advance the orchestrator (${run.error.message}).`
-    )
-  }
-
-  const state = await readOrchestrationState(args.out)
-  const summary = state ? `\n${renderOrchestrationSummary(state)}` : ''
-  return textResult(`Recorded approval for ${key} by ${args.approvedBy}.${summary}`)
-}
-
-function renderOrchestrationSummary(state) {
-  const workOrders = state.workOrders || (state.workOrder ? [state.workOrder] : [])
-  const currentStages = state.currentStages || (state.currentStage ? [state.currentStage] : [])
-  const lines = [
-    `Status: ${state.status}`,
-    `Current stages: ${currentStages.length ? currentStages.join(', ') : 'none'}`
-  ]
-  if (workOrders.length > 0) {
-    for (const order of workOrders) {
-      lines.push(`- [${order.stageId}] owner ${order.owner}: ${order.nextAction}`)
-    }
-  } else {
-    lines.push('All stages complete.')
-  }
-  return lines.join('\n')
-}
-
-async function readOrchestrationState(out) {
-  const statePath = resolve(out, '.tpan-opt-co-worker', 'console', 'orchestration.json')
-  try {
-    const data = JSON.parse(await readFile(statePath, 'utf8'))
-    return data && typeof data === 'object' ? data.current : null
-  } catch {
-    return null
-  }
-}
-
-async function readEvidence(evidencePath) {
-  try {
-    const parsed = JSON.parse(await readFile(evidencePath, 'utf8'))
-    if (parsed && typeof parsed === 'object' && parsed.gates && typeof parsed.gates === 'object') {
-      return parsed
-    }
-  } catch {
-    // No evidence file yet, or unreadable; start fresh.
-  }
-  return { gates: {} }
+    note: typeof args.note === 'string' ? args.note : '',
+    runId: typeof args.runId === 'string' && args.runId ? args.runId : 'local'
+  })
+  return textResult(result.text)
 }
 
 async function readWorkflowSource(args) {

@@ -506,7 +506,13 @@ tpan-opt-co-worker policies [--json]
 tpan-opt-co-worker teams [--json]
 tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
 tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
+tpan-opt-co-worker status [--out .]
+tpan-opt-co-worker next [--out .]
+tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
+tpan-opt-co-worker mcp
 ```
+
+`status`、`next`、`approve` 用于在命令行里驱动一个已编译的仓库。`status` 打印 workflow 和每个阶段的编排状态;`next` 打印打开的工单和下一步动作;`approve <gate> --by <approver>` 为某个人工 gate 记录审批证据并推进编排器 —— 这样你就不用手写 `manual-evidence.json`。当某个 gate id 在多个阶段复用时,加 `--stage`。它们与 MCP 的 `co_worker_next` / `co_worker_approve` 共用核心,所以 CLI 与 agent 内的行为一致。`mcp` 启动 MCP server(见 [以插件方式安装（MCP）](#以插件方式安装mcp)）。
 
 `quickstart` 是一条命令的引导式上手路径:它先做和 `init` 相同的 scaffold,然后立即编译全部 harness 资产,并(除非 `--no-demo`)跑一遍把第一个阶段预先批准的 demo orchestration,于是打开生成的 console 时它已显示实时阶段进度。它默认用 `minimal` 模板,因此在任意空目录、零外部 gate 的情况下都能工作。应用编辑后的 workflow 仍以 CLI `compile` 为权威路径。
 
@@ -803,6 +809,7 @@ Workflow 自定义 presets：
 - [x] 让 Web Console Workflow Designer 可编辑：支持浏览器内草稿校验与 JSON 导出。
 - [x] 增加一条命令的 quickstart：scaffold、编译并 seed 一个 demo run，让 console 立即填充可用。
 - [x] 提供零依赖 MCP server（quickstart、compile、validate、catalog、next、approve），让 co-worker 以插件方式接入 Codex、Claude Code 和支持 MCP 的 agent。
+- [x] 增加一等的 `status`、`next`、`approve` CLI 子命令：无需手写 evidence 文件即可驱动并审批工作流。
 - [x] 增加 skills、MCP servers 和 hooks 的 marketplace catalog discovery。
 - [x] 增加用于流程设计和执行追踪的 Web 控制台。
 - [x] 增加组织级模板、策略和可复用 agent team。
