@@ -181,7 +181,7 @@ node src/cli.js compile --workflow examples/opt.workflow.json --out /path/to/tar
 
 The compiler currently reads JSON workflow files. YAML support is planned.
 
-Open the generated static workflow console. It shows the workflow overview and Workflow Designer JSON panel immediately, then displays run summary, filterable run history with evidence artifact links, and status-filtered gate details with command exit codes and manual evidence metadata after local workflow runs have produced `.tpan-opt-co-worker/console/runs.json` and `.tpan-opt-co-worker/console/runs.js`.
+Open the generated static workflow console. It shows the workflow overview and an editable Workflow Designer panel (with in-browser draft validation and JSON export) immediately, then displays run summary, filterable run history with evidence artifact links, and status-filtered gate details with command exit codes and manual evidence metadata after local workflow runs have produced `.tpan-opt-co-worker/console/runs.json` and `.tpan-opt-co-worker/console/runs.js`.
 
 ```bash
 open /path/to/target-repo/.tpan-opt-co-worker/console/index.html
@@ -508,7 +508,7 @@ The generated `.tpan-opt-co-worker/workflow.schema.json` is a JSON Schema for wo
 
 The generated `.tpan-opt-co-worker/catalog.json`, `.tpan-opt-co-worker/marketplace.json`, and `.tpan-opt-co-worker/console/catalog.js` expose organization-level workflow templates, policy packs, reusable teams, and marketplace packages for skills, MCP servers, and hooks.
 
-The generated `.tpan-opt-co-worker/console/index.html` is a static workflow console that can be opened directly in a browser. It shows workflow identity, organization team/policy metadata, role ownership, stage sequence, manual/command gate distribution, a Workflow Designer seed panel with normalized workflow JSON, schema path, copy/download actions, organization catalog panels for reusable templates/policies/teams, marketplace package discovery, run summary status counts, filterable run history with direct links to each run's `evidence.json` and `summary.md`, and matching per-run gate details from `.tpan-opt-co-worker/console/runs.js` with `.tpan-opt-co-worker/console/runs.json` as a data fallback. Gate details include command text, exit codes, approver, notes, and safe evidence links where available.
+The generated `.tpan-opt-co-worker/console/index.html` is a static workflow console that can be opened directly in a browser. It shows workflow identity, organization team/policy metadata, role ownership, stage sequence, manual/command gate distribution, an editable Workflow Designer panel that validates a workflow draft in the browser against the same structural rules the compiler enforces (names, roles, owners, stage dependencies, gates) and offers copy/download of the edited JSON — with the CLI `compile` remaining the authoritative validator that writes assets — alongside the schema path, organization catalog panels for reusable templates/policies/teams, marketplace package discovery, run summary status counts, filterable run history with direct links to each run's `evidence.json` and `summary.md`, and matching per-run gate details from `.tpan-opt-co-worker/console/runs.js` with `.tpan-opt-co-worker/console/runs.json` as a data fallback. Gate details include command text, exit codes, approver, notes, and safe evidence links where available.
 
 The generated local runner reads the manifest, invokes verification, writes a standard run directory, updates `.tpan-opt-co-worker/runs/index.json`, and mirrors the run index plus gate details to `.tpan-opt-co-worker/console/runs.json` and `.tpan-opt-co-worker/console/runs.js` for the static console:
 
@@ -736,6 +736,7 @@ Custom preset names cannot override built-in preset names.
 - [x] Add generated web console status-filtered gate details.
 - [x] Add generated web console gate evidence metadata.
 - [x] Add generated web console run artifact links.
+- [x] Make the web console Workflow Designer editable with in-browser draft validation and JSON export.
 - [x] Add marketplace catalog discovery for skills, MCP servers, and hooks.
 - [x] Add a web console for workflow design and run tracking.
 - [x] Add organization-level templates, policies, and reusable agent teams.

@@ -1,11 +1,11 @@
 import { createCatalog } from './catalog-renderer.js'
 import { renderOrchestrationRuntime } from './web-console-orchestration.js'
+import { renderDesignerRuntime } from './web-console-designer.js'
 
 export function renderWebConsole(workflow) {
   const catalog = createCatalog()
   const workflowData = JSON.stringify(workflow)
   const workflowJson = JSON.stringify(workflow, null, 2)
-  const workflowJsonHref = encodeURIComponent(workflowJson)
   const roleRows = Object.entries(workflow.roles)
     .map(([roleId, role]) => renderRoleRow(roleId, role, workflow))
     .join('\n')
@@ -202,6 +202,15 @@ export function renderWebConsole(workflow) {
     .schema-line {
       margin-bottom: 10px;
     }
+    .designer-status {
+      margin-top: 10px;
+    }
+    .designer-status.valid { color: var(--accent); }
+    .designer-status.invalid { color: #a33b32; }
+    .designer-status ul {
+      margin: 6px 0 0;
+      padding-left: 18px;
+    }
     #workflow-json {
       display: block;
       width: 100%;
@@ -354,12 +363,15 @@ export function renderWebConsole(workflow) {
       <div class="section-head">
         <h2 id="workflow-designer-title">Workflow Designer</h2>
         <div class="designer-actions">
+          <button type="button" class="action" id="validate-workflow-json">Validate</button>
           <button type="button" class="action" id="copy-workflow-json">Copy JSON</button>
-          <a class="action" download="opt.workflow.json" href="data:application/json;charset=utf-8,${workflowJsonHref}">Download Workflow JSON</a>
+          <button type="button" class="action" id="download-workflow-json">Download Workflow JSON</button>
+          <button type="button" class="action" id="reset-workflow-json">Reset</button>
         </div>
       </div>
-      <p class="muted schema-line">Schema: <code>.tpan-opt-co-worker/workflow.schema.json</code></p>
-      <textarea id="workflow-json" readonly spellcheck="false">${escapeHtml(workflowJson)}</textarea>
+      <p class="muted schema-line">Edit the workflow below, then apply it with <code>tpan-opt-co-worker compile --workflow opt.workflow.json --out .</code> · Schema: <code>.tpan-opt-co-worker/workflow.schema.json</code></p>
+      <textarea id="workflow-json" spellcheck="false" aria-describedby="workflow-validation">${escapeHtml(workflowJson)}</textarea>
+      <div id="workflow-validation" class="designer-status muted" role="status" aria-live="polite">Edit the workflow and click Validate. The CLI compile remains the authoritative check.</div>
     </section>
     ${catalogSection}
     <section class="panel summary-panel" aria-labelledby="run-summary-title">
@@ -402,36 +414,7 @@ export function renderWebConsole(workflow) {
     loadRunHistory()
     loadOrchestration()
 
-    function initWorkflowDesigner() {
-      const copyButton = document.getElementById('copy-workflow-json')
-      if (!copyButton) return
-      copyButton.addEventListener('click', copyWorkflowJson)
-    }
-
-    async function copyWorkflowJson() {
-      const textarea = document.getElementById('workflow-json')
-      const copyButton = document.getElementById('copy-workflow-json')
-      if (!textarea || !copyButton) return
-
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(textarea.value)
-        } else {
-          textarea.focus()
-          textarea.select()
-          document.execCommand('copy')
-        }
-        copyButton.textContent = 'Copied'
-        window.setTimeout(() => {
-          copyButton.textContent = 'Copy JSON'
-        }, 1600)
-      } catch {
-        copyButton.textContent = 'Copy failed'
-        window.setTimeout(() => {
-          copyButton.textContent = 'Copy JSON'
-        }, 1600)
-      }
-    }
+${renderDesignerRuntime()}
 
     function initRunFilters() {
       document.querySelectorAll('[data-status-filter]').forEach((button) => {

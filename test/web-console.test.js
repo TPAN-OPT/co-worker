@@ -123,6 +123,65 @@ describe('generated web console runtime', () => {
     assert.match(html, /Work Order · frontend/)
   })
 
+  it('marks an edited workflow draft valid in the designer', () => {
+    const outputs = compileWorkflow(webConsoleWorkflow())
+    const webConsole = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/index.html'
+    )
+    const harness = createWebConsoleHarness({ runs: [], details: {} }, { current: null })
+
+    vm.runInNewContext(extractConsoleScript(webConsole.content), harness.context)
+
+    const status = harness.elements['workflow-validation']
+    assert.match(status.className, /valid/)
+    assert.match(status.textContent, /Valid workflow draft/)
+  })
+
+  it('reports structural issues when an invalid draft is validated', () => {
+    const outputs = compileWorkflow(webConsoleWorkflow())
+    const webConsole = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/index.html'
+    )
+    const harness = createWebConsoleHarness({ runs: [], details: {} }, { current: null })
+
+    vm.runInNewContext(extractConsoleScript(webConsole.content), harness.context)
+
+    harness.elements['workflow-json'].value = JSON.stringify({
+      name: 'edited',
+      version: '1.0.0',
+      roles: { lead: { skills: ['x'] } },
+      stages: [
+        { id: 'plan', owner: 'ghost' },
+        { id: 'plan', owner: 'lead', dependsOn: ['later'] },
+        { id: 'later', owner: 'lead' }
+      ]
+    })
+    harness.elements['validate-workflow-json'].click()
+
+    const status = harness.elements['workflow-validation']
+    assert.match(status.className, /invalid/)
+    assert.match(status.innerHTML, /unknown owner/)
+    assert.match(status.innerHTML, /Duplicate stage id/)
+    assert.match(status.innerHTML, /references unknown or later stage/)
+  })
+
+  it('flags an unparseable draft as invalid JSON', () => {
+    const outputs = compileWorkflow(webConsoleWorkflow())
+    const webConsole = outputs.find(
+      (output) => output.path === '.tpan-opt-co-worker/console/index.html'
+    )
+    const harness = createWebConsoleHarness({ runs: [], details: {} }, { current: null })
+
+    vm.runInNewContext(extractConsoleScript(webConsole.content), harness.context)
+
+    harness.elements['workflow-json'].value = '{ not json'
+    harness.elements['validate-workflow-json'].click()
+
+    const status = harness.elements['workflow-validation']
+    assert.match(status.className, /invalid/)
+    assert.match(status.innerHTML, /Invalid JSON/)
+  })
+
   it('emits empty orchestration placeholders for a clean first load', () => {
     const outputs = compileWorkflow(webConsoleWorkflow())
     const script = outputs.find(
@@ -182,12 +241,31 @@ function extractConsoleScript(content) {
   return match[1]
 }
 
-function createWebConsoleHarness(runData, orchestrationData) {
+const MINIMAL_VALID_DRAFT = JSON.stringify(
+  {
+    name: 'draft',
+    version: '1.0.0',
+    roles: { lead: { skills: ['verification-loop'], permissions: ['read_repo'] } },
+    stages: [{ id: 'plan', owner: 'lead', gates: [{ id: 'human_approval', type: 'manual' }] }]
+  },
+  null,
+  2
+)
+
+function createWebConsoleHarness(runData, orchestrationData, designer = {}) {
+  const draftValue = designer.value ?? MINIMAL_VALID_DRAFT
   const elements = {
     'run-summary': createElement(),
     'run-history': createElement(),
     'gate-details': createElement(),
-    orchestration: createElement()
+    orchestration: createElement(),
+    'workflow-json': createElement({ value: draftValue }),
+    'workflow-validation': createElement(),
+    'workflow-data': createElement({ textContent: designer.source ?? draftValue }),
+    'copy-workflow-json': createElement(),
+    'validate-workflow-json': createElement(),
+    'download-workflow-json': createElement(),
+    'reset-workflow-json': createElement()
   }
   const buttons = Object.fromEntries(
     ['all', 'passed', 'pending', 'failed'].map((status) => [
