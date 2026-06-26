@@ -98,6 +98,16 @@ function printInitNextSteps(workflow, workflowFile) {
 // shows live stage progress instead of empty panels.
 export async function runQuickstart(args) {
   const options = parseQuickstartArgs(args)
+  const result = await quickstartProject(options)
+  console.log(`Wrote workflow template ${result.template}: ${result.workflowPath}`)
+  console.log(`Compiled ${result.assetCount} harness assets into ${result.targetDir}`)
+  printQuickstartNextSteps(result.targetDir, result.demo)
+}
+
+// Runs the quickstart pipeline (scaffold + compile + optional demo) and returns
+// a structured result instead of logging, so both the CLI command and the MCP
+// `quickstart` tool can drive it and format their own output.
+export async function quickstartProject(options) {
   const targetDir = resolve(options.out)
   const { workflow, template } = buildStarterWorkflow(options)
 
@@ -111,18 +121,23 @@ export async function runQuickstart(args) {
     targetDir,
     { force: options.force }
   )
-  console.log(`Wrote workflow template ${template}: ${workflowResult.written[0]}`)
 
   const outputs = compileWorkflow(workflow)
   const compileResult = await writeCompiledOutputs(outputs, targetDir, {
     force: options.force
   })
-  console.log(`Compiled ${compileResult.written.length} harness assets into ${targetDir}`)
 
   await scaffoldPackageJson(workflow, targetDir)
 
   const demo = options.demo ? await runQuickstartDemo(workflow, targetDir, options.runId) : null
-  printQuickstartNextSteps(targetDir, demo)
+
+  return {
+    targetDir,
+    template,
+    workflowPath: workflowResult.written[0],
+    assetCount: compileResult.written.length,
+    demo
+  }
 }
 
 // Seed a demo orchestration run by approving the first stage's manual gates and

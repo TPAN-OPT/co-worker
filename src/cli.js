@@ -14,6 +14,7 @@ import {
 import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { runInit, runQuickstart } from './init-commands.js'
+import { runMcpServer } from './mcp-server.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
 
 async function main(argv) {
@@ -76,6 +77,11 @@ async function main(argv) {
 
   if (command === 'quickstart') {
     await runQuickstart(argv.slice(3))
+    return
+  }
+
+  if (command === 'mcp') {
+    await runMcpServer()
     return
   }
 
@@ -419,9 +425,11 @@ Usage:
   tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
   tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
   tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
+  tpan-opt-co-worker mcp
 
 Commands:
   quickstart Scaffold, compile, and seed a demo run so the console works immediately.
+  mcp        Run the MCP server (stdio) so Codex, Claude Code, and MCP-capable agents can call co-worker tools.
   init       Create a starter opt.workflow.json template.
   validate   Validate a workflow definition without writing generated assets.
   catalog    List the combined built-in catalog.

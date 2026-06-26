@@ -1,0 +1,18 @@
+{
+  "name": "tpan-opt-co-worker",
+  "description": "Workflow compiler and stage-gated orchestrator for governed multi-agent delivery. Exposes quickstart, compile, validate, catalog, next, and approve as MCP tools.",
+  "version": "0.1.0",
+  "author": {
+    "name": "TPAN-OPT/CO-WORKER",
+    "url": "https://github.com/TPAN-OPT/co-worker"
+  },
+  "homepage": "https://github.com/TPAN-OPT/co-worker",
+  "keywords": [
+    "workflow",
+    "orchestration",
+    "mcp",
+    "ai-agents",
+    "codex",
+    "claude-code"
+  ]
+}

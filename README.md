@@ -245,6 +245,42 @@ The run directory contains:
 - `evidence.json`: machine-readable gate results.
 - `summary.md`: human-readable workflow evidence summary.
 
+## Install as a plugin (MCP)
+
+co-worker ships a zero-dependency MCP server (`tpan-opt-co-worker mcp`, newline-delimited JSON-RPC over stdio) that exposes its capabilities as callable tools — `co_worker_quickstart`, `co_worker_compile`, `co_worker_validate`, `co_worker_catalog`, `co_worker_next`, and `co_worker_approve` — so any MCP-capable code agent can scaffold, configure, drive, and approve workflows from inside the agent.
+
+**Claude Code** — install as a plugin:
+
+```text
+/plugin marketplace add https://github.com/TPAN-OPT/co-worker
+/plugin install tpan-opt-co-worker@tpan-opt-co-worker
+```
+
+The plugin registers the `co-worker` MCP server (via `.mcp.json`) automatically.
+
+**Codex** — add the server to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.co-worker]
+command = "npx"
+args = ["-y", "tpan-opt-co-worker", "mcp"]
+```
+
+**Other MCP-capable agents (Cursor, domestic code agents, custom runners)** — point them at the same server:
+
+```json
+{
+  "mcpServers": {
+    "co-worker": {
+      "command": "npx",
+      "args": ["-y", "tpan-opt-co-worker", "mcp"]
+    }
+  }
+}
+```
+
+Then, from inside the agent, ask it to run `co_worker_quickstart` to scaffold a populated console, `co_worker_next` to see the open work order, and `co_worker_approve` to sign off a manual gate and advance — no hand-edited evidence files. Agents that only read repository files still work through the generated `CLAUDE.md`, `.codex/`, `.cursor/`, and `opencode.json` assets.
+
 ## Core Concept
 
 Most AI tools focus on helping an agent complete a task.
@@ -766,6 +802,7 @@ Custom preset names cannot override built-in preset names.
 - [x] Add generated web console run artifact links.
 - [x] Make the web console Workflow Designer editable with in-browser draft validation and JSON export.
 - [x] Add a one-command quickstart that scaffolds, compiles, and seeds a demo run for an immediately populated console.
+- [x] Ship a zero-dependency MCP server (quickstart, compile, validate, catalog, next, approve) so co-worker installs as a plugin in Codex, Claude Code, and MCP-capable agents.
 - [x] Add marketplace catalog discovery for skills, MCP servers, and hooks.
 - [x] Add a web console for workflow design and run tracking.
 - [x] Add organization-level templates, policies, and reusable agent teams.

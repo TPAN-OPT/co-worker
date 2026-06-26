@@ -245,6 +245,42 @@ Run 目录包含：
 - `evidence.json`：机器可读的 gate 结果。
 - `summary.md`：人类可读的 workflow evidence summary。
 
+## 以插件方式安装（MCP）
+
+co-worker 自带一个零依赖的 MCP server(`tpan-opt-co-worker mcp`,stdio 上的换行分隔 JSON-RPC),把能力暴露成可调用 tool —— `co_worker_quickstart`、`co_worker_compile`、`co_worker_validate`、`co_worker_catalog`、`co_worker_next`、`co_worker_approve` —— 于是任何支持 MCP 的 code agent 都能在 agent 内部完成 scaffold、配置、驱动和审批。
+
+**Claude Code** —— 以插件安装：
+
+```text
+/plugin marketplace add https://github.com/TPAN-OPT/co-worker
+/plugin install tpan-opt-co-worker@tpan-opt-co-worker
+```
+
+插件会自动注册 `co-worker` MCP server(通过 `.mcp.json`)。
+
+**Codex** —— 在 `~/.codex/config.toml` 加入：
+
+```toml
+[mcp_servers.co-worker]
+command = "npx"
+args = ["-y", "tpan-opt-co-worker", "mcp"]
+```
+
+**其他支持 MCP 的 agent(Cursor、国产 code agent、自研 runner)** —— 指向同一个 server：
+
+```json
+{
+  "mcpServers": {
+    "co-worker": {
+      "command": "npx",
+      "args": ["-y", "tpan-opt-co-worker", "mcp"]
+    }
+  }
+}
+```
+
+然后在 agent 里,让它调用 `co_worker_quickstart` 生成一个已填充的 console、`co_worker_next` 查看打开的工单、`co_worker_approve` 批准某个人工 gate 并推进 —— 不用再手写 evidence 文件。只读仓库文件的 agent,仍可通过生成的 `CLAUDE.md`、`.codex/`、`.cursor/`、`opencode.json` 接入。
+
 ## 核心理念
 
 大多数 AI 工具关注“让一个 agent 完成一个任务”。
@@ -766,6 +802,7 @@ Workflow 自定义 presets：
 - [x] 增加生成式 web console run artifact links。
 - [x] 让 Web Console Workflow Designer 可编辑：支持浏览器内草稿校验与 JSON 导出。
 - [x] 增加一条命令的 quickstart：scaffold、编译并 seed 一个 demo run，让 console 立即填充可用。
+- [x] 提供零依赖 MCP server（quickstart、compile、validate、catalog、next、approve），让 co-worker 以插件方式接入 Codex、Claude Code 和支持 MCP 的 agent。
 - [x] 增加 skills、MCP servers 和 hooks 的 marketplace catalog discovery。
 - [x] 增加用于流程设计和执行追踪的 Web 控制台。
 - [x] 增加组织级模板、策略和可复用 agent team。
