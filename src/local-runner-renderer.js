@@ -45,6 +45,7 @@ updateRunIndex({
   manifest,
   runId,
   runDir,
+  module: options.module,
   exitCode,
   report: readEvidenceReport(runDir)
 })
@@ -54,7 +55,8 @@ process.exit(exitCode)
 function parseArgs(args) {
   const parsed = {
     runId: '',
-    manualEvidencePath: ''
+    manualEvidencePath: '',
+    module: ''
   }
 
   for (let index = 0; index < args.length; index += 1) {
@@ -62,6 +64,12 @@ function parseArgs(args) {
 
     if (arg === '--run-id') {
       parsed.runId = requireNextValue(args, index, '--run-id')
+      index += 1
+      continue
+    }
+
+    if (arg === '--module') {
+      parsed.module = requireNextValue(args, index, '--module').trim()
       index += 1
       continue
     }
@@ -122,12 +130,13 @@ function readEvidenceReport(runDir) {
   return JSON.parse(readFileSync(evidencePath, 'utf8'))
 }
 
-function updateRunIndex({ manifest, runId, runDir, exitCode, report }) {
+function updateRunIndex({ manifest, runId, runDir, module: moduleLabel, exitCode, report }) {
   mkdirSync(projectPath(RUNS_ROOT), { recursive: true })
   const existingIndex = readRunIndex()
   const runRecord = {
     id: runId,
     workflow: manifest.workflow,
+    ...(moduleLabel ? { module: moduleLabel } : {}),
     runDir,
     status: getRunStatus(exitCode, report),
     commandPassed: report?.commandPassed === true,
@@ -234,7 +243,7 @@ function projectPath(...segments) {
 }
 
 function printHelp() {
-  console.log('Usage: node scripts/run-workflow.mjs [--run-id local-run] [--manual-evidence manual-evidence.json]')
+  console.log('Usage: node scripts/run-workflow.mjs [--run-id local-run] [--module payments] [--manual-evidence manual-evidence.json]')
 }
 `
 }

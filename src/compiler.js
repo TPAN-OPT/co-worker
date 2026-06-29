@@ -1,5 +1,15 @@
-import { GATE_PRESETS, createGatePresetRegistry, resolveGatePreset } from './gate-presets.js'
-import { IDENTIFIER_PATTERN } from './identifier-pattern.js'
+import { GATE_PRESETS, createGatePresetRegistry } from './gate-presets.js'
+import { normalizeStages } from './stage-normalizer.js'
+import {
+  assertKnownFields,
+  isPlainObject,
+  normalizeEnum,
+  normalizeEnvObject,
+  normalizeStringArray,
+  optionalString,
+  requireNonEmptyString,
+  validateIdentifier
+} from './workflow-validation.js'
 import {
   renderCatalogJson,
   renderCatalogScript,
@@ -29,12 +39,14 @@ import {
   renderOpenCodeConfig
 } from './opencode-renderer.js'
 import { renderAgentsMarkdown, renderPullRequestTemplate } from './agents-renderer.js'
+import { renderPlaybookMarkdown } from './playbook-renderer.js'
 import { renderAgentToml, renderCodexConfig } from './codex-renderer.js'
 import { renderWebConsole } from './web-console-renderer.js'
 
 const WORKFLOW_FIELDS = [
   'name',
   'version',
+  'mode',
   'organization',
   'mcpServers',
   'gatePresets',
@@ -43,11 +55,14 @@ const WORKFLOW_FIELDS = [
   'hooks',
   'orchestration'
 ]
+// Distribution target for the same workflow definition: "opt" hands it to code
+// agents driven by the orchestrator (see --loop); "team" hands the same standard
+// process to human teammates. Phase 1 carries and surfaces the mode; later phases
+// branch behavior on it.
+const WORKFLOW_MODES = ['opt', 'team']
 const ORGANIZATION_FIELDS = ['team', 'policies']
 const ORCHESTRATION_FIELDS = ['agentCommand', 'agents']
 const ROLE_FIELDS = ['description', 'skills', 'permissions', 'mcpServers']
-const STAGE_FIELDS = ['id', 'owner', 'output', 'required', 'dependsOn', 'gates']
-const GATE_FIELDS = ['id', 'type', 'preset', 'description', 'command']
 const MCP_SERVER_FIELDS = ['command', 'args', 'env', 'url', 'transport', 'description']
 const MCP_TRANSPORTS = ['stdio', 'sse', 'http']
 const HOOK_FIELDS = ['id', 'event', 'command', 'matcher', 'description']
@@ -67,18 +82,28 @@ export function validateWorkflow(input) {
   assertKnownFields(input, WORKFLOW_FIELDS, 'Workflow')
   const name = requireNonEmptyString(input.name, 'Workflow name')
   const version = requireNonEmptyString(input.version, 'Workflow version')
+  const mode =
+    input.mode === undefined ? 'opt' : normalizeEnum(input.mode, WORKFLOW_MODES, 'Workflow mode')
   const organization = normalizeOrganization(input.organization)
   const mcpServers = normalizeMcpServers(input.mcpServers)
-  const roles = normalizeRoles(input.roles, new Set(Object.keys(mcpServers)))
+  const serverNames = new Set(Object.keys(mcpServers))
+  const roles = normalizeRoles(input.roles, serverNames)
+  // Hooks are normalized before stages so a stage or node can reference a hook by
+  // id, the same way roles reference MCP servers by id.
+  const hooks = normalizeHooks(input.hooks)
+  const hookIds = new Set(hooks.map((hook) => hook.id))
   const gatePresetRegistry = createGatePresetRegistry(input.gatePresets)
   const gatePresets = getCustomGatePresets(gatePresetRegistry)
-  const stages = normalizeStages(input.stages, roles, gatePresetRegistry)
-  const hooks = normalizeHooks(input.hooks)
+  const stages = normalizeStages(input.stages, roles, gatePresetRegistry, {
+    serverNames,
+    hookIds
+  })
   const orchestration = normalizeOrchestration(input.orchestration, roles)
 
   return deepFreeze({
     name,
     version,
+    mode,
     ...(organization ? { organization } : {}),
     ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
     gatePresets,
@@ -332,6 +357,10 @@ export function compileWorkflow(input) {
       content: renderClaudeMarkdown(workflow)
     },
     {
+      path: 'PLAYBOOK.md',
+      content: renderPlaybookMarkdown(workflow)
+    },
+    {
       path: '.codex/config.toml',
       content: renderCodexConfig(workflow)
     },
@@ -496,264 +525,12 @@ function normalizeRoleMcpServers(value, roleId, serverNames) {
   return names
 }
 
-function normalizeStages(stages, roles, gatePresetRegistry) {
-  if (!Array.isArray(stages) || stages.length === 0) {
-    throw new Error('Workflow stages must be a non-empty array')
-  }
-
-  const seenStageIds = new Set()
-  let previousStageId = null
-  return stages.map((stage) => {
-    if (!isPlainObject(stage)) {
-      throw new Error('Each workflow stage must be an object')
-    }
-
-    const id = requireNonEmptyString(stage.id, 'Stage id')
-    validateIdentifier(id, `Stage id "${id}"`)
-    assertKnownFields(stage, STAGE_FIELDS, `Stage "${id}"`)
-
-    if (seenStageIds.has(id)) {
-      throw new Error(`Duplicate stage id "${id}"`)
-    }
-
-    const owner = requireNonEmptyString(stage.owner, `Stage "${id}" owner`)
-    if (!Object.hasOwn(roles, owner)) {
-      throw new Error(`Stage "${id}" references unknown owner "${owner}"`)
-    }
-
-    const dependsOn = normalizeStageDependencies(stage.dependsOn, {
-      stageId: id,
-      knownStageIds: seenStageIds,
-      previousStageId
-    })
-
-    seenStageIds.add(id)
-    previousStageId = id
-
-    return {
-      id,
-      owner,
-      output:
-        typeof stage.output === 'string' && stage.output.trim() !== ''
-          ? stage.output.trim()
-          : '',
-      required: normalizeStringArray(stage.required, `Stage "${id}" required`, {
-        optional: true
-      }),
-      dependsOn,
-      gates: normalizeGates(
-        stage.gates,
-        `Stage "${id}" gates`,
-        gatePresetRegistry,
-        {
-          optional: true
-        }
-      )
-    }
-  })
-}
-
-// Stage dependencies form the scheduling DAG. A stage may only depend on stages
-// declared before it, which guarantees the workflow array is already a valid
-// topological order and makes cycles impossible. When dependsOn is omitted the
-// stage defaults to depending on the immediately preceding stage, so a plain
-// list of stages stays strictly sequential (backward compatible). An explicit
-// empty array opts a stage out of that default to run as an independent branch.
-function normalizeStageDependencies(dependsOn, { stageId, knownStageIds, previousStageId }) {
-  if (dependsOn === undefined) {
-    return previousStageId ? [previousStageId] : []
-  }
-
-  const ids = normalizeStringArray(dependsOn, `Stage "${stageId}" dependsOn`, {
-    optional: true
-  })
-
-  const seen = new Set()
-  for (const depId of ids) {
-    if (depId === stageId) {
-      throw new Error(`Stage "${stageId}" cannot depend on itself`)
-    }
-    if (!knownStageIds.has(depId)) {
-      throw new Error(
-        `Stage "${stageId}" dependsOn references unknown or later stage "${depId}"`
-      )
-    }
-    if (seen.has(depId)) {
-      throw new Error(`Stage "${stageId}" dependsOn lists "${depId}" more than once`)
-    }
-    seen.add(depId)
-  }
-
-  return ids
-}
-
-
-function normalizeGates(value, label, gatePresetRegistry, options = {}) {
-  if (value === undefined && options.optional) {
-    return []
-  }
-
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} must be an array`)
-  }
-
-  const seenGateIds = new Set()
-  return value.map((gate, index) => {
-    const normalizedGate = normalizeGate(gate, `${label}[${index}]`, gatePresetRegistry)
-
-    if (seenGateIds.has(normalizedGate.id)) {
-      throw new Error(`Duplicate gate id "${normalizedGate.id}"`)
-    }
-    seenGateIds.add(normalizedGate.id)
-
-    return normalizedGate
-  })
-}
-
-function normalizeGate(gate, label, gatePresetRegistry) {
-  if (typeof gate === 'string') {
-    const id = requireNonEmptyString(gate, label)
-    validateIdentifier(id, `Gate "${id}"`)
-    return {
-      id,
-      type: 'manual',
-      description: '',
-      command: ''
-    }
-  }
-
-  if (!isPlainObject(gate)) {
-    throw new Error(`${label} must be a string or gate object`)
-  }
-
-  assertKnownFields(gate, GATE_FIELDS, label)
-  const id = requireNonEmptyString(gate.id, `${label} id`)
-  validateIdentifier(id, `Gate "${id}"`)
-  const presetId =
-    typeof gate.preset === 'string' && gate.preset.trim() !== ''
-      ? gate.preset.trim()
-      : ''
-  const preset = presetId ? resolveGatePreset(presetId, gatePresetRegistry) : null
-
-  const type =
-    typeof gate.type === 'string' && gate.type.trim() !== ''
-      ? gate.type.trim()
-      : preset?.type || 'manual'
-
-  if (type !== 'manual' && type !== 'command') {
-    throw new Error(`Gate "${id}" type must be "manual" or "command"`)
-  }
-
-  if (preset && type !== preset.type) {
-    throw new Error(`Gate "${id}" type must match preset "${presetId}" type "${preset.type}"`)
-  }
-
-  const command =
-    typeof gate.command === 'string' && gate.command.trim() !== ''
-      ? gate.command.trim()
-      : preset?.command || ''
-
-  if (type === 'command' && command === '') {
-    throw new Error(`Gate "${id}" command must be a non-empty string`)
-  }
-
-  return {
-    id,
-    type,
-    ...(presetId ? { preset: presetId } : {}),
-    description:
-      typeof gate.description === 'string' && gate.description.trim() !== ''
-        ? gate.description.trim()
-        : preset?.description || '',
-    command
-  }
-}
-
 function getCustomGatePresets(gatePresetRegistry) {
   return Object.fromEntries(
     Object.entries(gatePresetRegistry).filter(
       ([presetId]) => !Object.hasOwn(GATE_PRESETS, presetId)
     )
   )
-}
-
-function normalizeStringArray(value, label, options = {}) {
-  if (value === undefined && options.optional) {
-    return []
-  }
-
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} must be an array`)
-  }
-
-  return value.map((item, index) => {
-    if (typeof item !== 'string' || item.trim() === '') {
-      throw new Error(`${label}[${index}] must be a non-empty string`)
-    }
-
-    return item.trim()
-  })
-}
-
-function requireNonEmptyString(value, label) {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`${label} must be a non-empty string`)
-  }
-
-  return value.trim()
-}
-
-function normalizeEnvObject(value, label) {
-  if (value === undefined) {
-    return {}
-  }
-
-  if (!isPlainObject(value)) {
-    throw new Error(`${label} must be an object`)
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => {
-      if (typeof key !== 'string' || key.trim() === '') {
-        throw new Error(`${label} keys must be non-empty strings`)
-      }
-      if (typeof item !== 'string') {
-        throw new Error(`${label} value for "${key}" must be a string`)
-      }
-
-      return [key, item]
-    })
-  )
-}
-
-function normalizeEnum(value, allowed, label) {
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new Error(`${label} must be one of ${allowed.join(', ')}`)
-  }
-
-  return value
-}
-
-function optionalString(value) {
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : ''
-}
-
-function validateIdentifier(value, label) {
-  if (!IDENTIFIER_PATTERN.test(value)) {
-    throw new Error(`${label} must use letters, numbers, underscores, or hyphens`)
-  }
-}
-
-function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function assertKnownFields(value, allowedFields, label) {
-  for (const field of Object.keys(value)) {
-    if (!allowedFields.includes(field)) {
-      throw new Error(`${label} contains unknown field "${field}"`)
-    }
-  }
 }
 
 function deepFreeze(value) {

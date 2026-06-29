@@ -1,3 +1,5 @@
+import { stageGates } from './stage-gates.js'
+
 export function renderVerifyScript(workflow) {
   const workflowStages = workflow.stages.map((stage) => ({
     id: stage.id,
@@ -337,10 +339,11 @@ function printHelp() {
 }
 
 function getStageGates(stage, type) {
-  return stage.gates
+  return stageGates(stage)
     .filter((gate) => gate.type === type)
     .map((gate) => ({
       stageId: stage.id,
+      ...(gate.nodeId ? { nodeId: gate.nodeId } : {}),
       id: gate.id,
       preset: gate.preset || '',
       ...(type === 'command' ? { command: gate.command } : {}),

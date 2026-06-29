@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path'
 const MANIFEST_REL = '.tpan-opt-co-worker/workflow.manifest.json'
 const ORCHESTRATION_REL = '.tpan-opt-co-worker/console/orchestration.json'
 const EVIDENCE_REL = '.tpan-opt-co-worker/manual-evidence.json'
+const RUNS_INDEX_REL = '.tpan-opt-co-worker/runs/index.json'
 
 export async function readOrchestrationState(out) {
   try {
@@ -57,8 +58,12 @@ export async function workflowStatus(out) {
     }
   }
 
+  const mode = manifest.mode || 'opt'
+  const modeLabel = mode === 'team' ? 'team (human teammates)' : 'opt (code agents)'
   const lines = [
     `Workflow: ${manifest.workflow.name}@${manifest.workflow.version}`,
+    `Mode: ${modeLabel}`,
+    ...(mode === 'team' ? ['Playbook: PLAYBOOK.md (hand to each teammate; one run per product/module)'] : []),
     `Orchestration: ${state ? state.status : 'not run yet'}`,
     'Stages:'
   ]
@@ -73,6 +78,80 @@ export async function workflowStatus(out) {
     lines.push('Run `tpan-opt-co-worker quickstart` or orchestrate to populate orchestration state.')
   }
   return { manifest, state, text: lines.join('\n') }
+}
+
+// Team-mode shared dashboard: in team mode every teammate runs the WHOLE
+// pipeline on their own product/module, recorded as a labelled verification run
+// (`run-workflow.mjs --module <name>`). This aggregates the latest run per module
+// into one side-by-side table so a lead can see who is green at a glance. It is a
+// read-only view over the same runs index the web console renders.
+export async function readRunsIndex(out) {
+  try {
+    const parsed = JSON.parse(await readFile(resolve(out, RUNS_INDEX_REL), 'utf8'))
+    return parsed && Array.isArray(parsed.runs) ? parsed.runs : []
+  } catch {
+    return []
+  }
+}
+
+export function latestRunPerModule(runs) {
+  const byModule = new Map()
+  for (const run of runs) {
+    const label = run.module || '(unlabeled)'
+    const current = byModule.get(label)
+    if (!current || String(run.finishedAt || '') > String(current.finishedAt || '')) {
+      byModule.set(label, run)
+    }
+  }
+  return [...byModule.entries()]
+    .map(([module, run]) => ({ module, run }))
+    .sort((a, b) => a.module.localeCompare(b.module))
+}
+
+export async function workflowDashboard(out) {
+  const manifest = await readManifest(out)
+  const runs = await readRunsIndex(out)
+  const mode = manifest.mode || 'opt'
+  const modeLabel = mode === 'team' ? 'team (human teammates)' : 'opt (code agents)'
+  const grouped = latestRunPerModule(runs)
+
+  const lines = [
+    `Workflow: ${manifest.workflow.name}@${manifest.workflow.version}`,
+    `Mode: ${modeLabel}`,
+    `Runs: ${runs.length} across ${grouped.length} module${grouped.length === 1 ? '' : 's'}`
+  ]
+
+  if (grouped.length === 0) {
+    lines.push('No runs recorded yet. Run `node scripts/run-workflow.mjs --module <name>` per product/module.')
+    return { manifest, runs, grouped, text: lines.join('\n') }
+  }
+
+  lines.push('')
+  lines.push(formatDashboardRow('Module', 'Latest run', 'Status', 'Command', 'Gates', 'Finished'))
+  for (const { module, run } of grouped) {
+    lines.push(
+      formatDashboardRow(
+        module,
+        run.id || '-',
+        run.status || 'unknown',
+        run.commandPassed ? 'pass' : 'fail',
+        run.allGatesPassed ? 'pass' : 'fail',
+        run.finishedAt || '-'
+      )
+    )
+  }
+  return { manifest, runs, grouped, text: lines.join('\n') }
+}
+
+function formatDashboardRow(module, runId, status, command, gates, finished) {
+  return [
+    String(module).padEnd(18),
+    String(runId).padEnd(22),
+    String(status).padEnd(8),
+    String(command).padEnd(8),
+    String(gates).padEnd(6),
+    String(finished)
+  ].join(' ')
 }
 
 export async function approveGate({ out, gate, stage = '', approvedBy, note = '', runId = 'local' }) {
@@ -116,6 +195,12 @@ export async function runStatus(args) {
 export async function runNext(args) {
   const options = parseOpsArgs(args, 'next')
   const result = await nextWorkOrder(options.out)
+  console.log(result.text)
+}
+
+export async function runDashboard(args) {
+  const options = parseOpsArgs(args, 'dashboard')
+  const result = await workflowDashboard(options.out)
   console.log(result.text)
 }
 

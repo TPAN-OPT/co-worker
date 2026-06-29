@@ -16,8 +16,9 @@ import { writeCompiledOutputs } from './file-system.js'
 import { runInit, runQuickstart } from './init-commands.js'
 import { runWizard } from './wizard-commands.js'
 import { runMcpServer } from './mcp-server.js'
-import { runApprove, runNext, runStatus } from './ops-commands.js'
+import { runApprove, runDashboard, runNext, runStatus } from './ops-commands.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
+import { stageGates } from './stage-gates.js'
 
 async function main(argv) {
   const command = argv[2]
@@ -99,6 +100,11 @@ async function main(argv) {
 
   if (command === 'next') {
     await runNext(argv.slice(3))
+    return
+  }
+
+  if (command === 'dashboard') {
+    await runDashboard(argv.slice(3))
     return
   }
 
@@ -396,13 +402,13 @@ function isPlainObject(value) {
 }
 
 function countWorkflowGates(workflow) {
-  return workflow.stages.reduce((total, stage) => total + stage.gates.length, 0)
+  return workflow.stages.reduce((total, stage) => total + stageGates(stage).length, 0)
 }
 
 function countWorkflowGatesByType(workflow, type) {
   return workflow.stages.reduce(
     (total, stage) =>
-      total + stage.gates.filter((gate) => gate.type === type).length,
+      total + stageGates(stage).filter((gate) => gate.type === type).length,
     0
   )
 }
@@ -450,6 +456,7 @@ Usage:
   tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
   tpan-opt-co-worker status [--out .]
   tpan-opt-co-worker next [--out .]
+  tpan-opt-co-worker dashboard [--out .]
   tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
   tpan-opt-co-worker mcp
 
@@ -458,6 +465,7 @@ Commands:
   wizard     Interactively configure a workflow (template, team, policies, MCP servers, hooks) and compile it.
   status     Show the compiled workflow and per-stage orchestration status.
   next       Show the open work order(s) and the next action.
+  dashboard  Aggregate the latest verification run per product/module (team mode).
   approve    Approve a manual gate (record evidence) and advance the orchestrator.
   mcp        Run the MCP server (stdio) so Codex, Claude Code, and MCP-capable agents can call co-worker tools.
   init       Create a starter opt.workflow.json template.

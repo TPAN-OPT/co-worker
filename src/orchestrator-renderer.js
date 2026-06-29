@@ -60,66 +60,34 @@ console.log(\`Run: \${runId}\`)
 // routing + approval boundary, now expressed as the dependency graph. Because a
 // stage may only depend on earlier-declared stages, the manifest array is
 // already a valid topological order and a single pass resolves every stage.
-const stageStates = []
-const statusById = {}
+// Invocations accumulate across passes so the written state and work orders
+// reflect every agent the run drove, not just the final pass.
 const invocations = []
+const maxPasses = options.loop ? options.maxIterations : 1
+let state = null
+let previousDoneCount = -1
 
-for (const stage of manifest.stages) {
-  const dependsOn = Array.isArray(stage.dependsOn) ? stage.dependsOn : []
-  const blockedBy = dependsOn.filter((depId) => statusById[depId] !== 'done')
-
-  if (blockedBy.length > 0) {
-    stageStates.push(pendingStageState(stage, blockedBy))
-    statusById[stage.id] = 'pending'
-    continue
+// Without --loop this runs exactly one pass (unchanged behavior). With --loop
+// the pass repeats so an owner agent can take several attempts, until the run
+// completes, stalls (no stage advanced), or hits the iteration cap.
+for (let pass = 1; pass <= maxPasses; pass += 1) {
+  if (options.loop && maxPasses > 1) {
+    console.log(\`Pass \${pass}/\${maxPasses}\`)
   }
 
-  let evaluated = evaluateStage(stage)
+  const result = runPass()
+  state = result.state
 
-  // Agent invocation: when the stage cannot be satisfied from existing
-  // evidence and the operator opted in with --invoke, drive the owner role's
-  // agent once and re-evaluate the stage. This closes the loop from routing to
-  // execution while staying bounded (one invocation per stage per run) and
-  // leaving manual approval gates under human control.
-  if (!evaluated.done && options.invoke) {
-    const agentCommand = resolveAgentCommand(stage.owner)
-    if (!agentCommand) {
-      throw new Error(
-        \`--invoke has no agent command for stage "\${stage.id}" (owner "\${stage.owner}"). Pass --agent-command or set orchestration.agentCommand for that role.\`
-      )
-    }
-    invocations.push(invokeAgent(stage, evaluated.state, agentCommand))
-    evaluated = evaluateStage(stage)
+  if (!result.blocked) {
+    break
   }
-
-  stageStates.push(evaluated.state)
-  statusById[stage.id] = evaluated.done ? 'done' : 'current'
-}
-
-// Multiple stages can be "current" at once (parallel work orders across owners).
-// currentStage/workOrder stay as the first frontier for backward compatibility;
-// currentStages/workOrders carry the full set.
-const currentStages = stageStates
-  .filter((stage) => stage.status === 'current')
-  .map((stage) => stage.id)
-const workOrders = currentStages.map((stageId) =>
-  buildWorkOrder(stageStates.find((stage) => stage.id === stageId), invocations)
-)
-const blocked = stageStates.some((stage) => stage.status !== 'done')
-
-const state = {
-  schemaVersion: SCHEMA_VERSION,
-  workflow: manifest.workflow,
-  runId,
-  status: blocked ? 'blocked' : 'completed',
-  currentStage: currentStages[0] || null,
-  currentStages,
-  startedAt,
-  finishedAt: new Date().toISOString(),
-  stages: stageStates,
-  invocations,
-  workOrder: workOrders[0] || null,
-  workOrders
+  // No stage advanced this pass: the remaining gates are waiting on manual
+  // approval, or the agent could not satisfy a command gate. Stop instead of
+  // spinning identical passes.
+  if (result.doneCount === previousDoneCount) {
+    break
+  }
+  previousDoneCount = result.doneCount
 }
 
 writeStateArtifacts(stateDir, state)
@@ -127,15 +95,120 @@ syncConsoleOrchestration(state)
 console.log(\`Wrote orchestration state: \${stateDir}\`)
 printSummary(state)
 
-if (blocked) {
+if (state.status !== 'completed') {
   process.exitCode = 1
+}
+
+// One scheduling pass over the DAG: every ready stage is evaluated (and, with
+// --invoke, its owner agent driven once) in topological order, so a linear
+// chain can cascade within a single pass. A stage with any unfinished
+// dependency stays pending and its command gates never run.
+function runPass() {
+  const stageStates = []
+  const statusById = {}
+
+  for (const stage of manifest.stages) {
+    const dependsOn = Array.isArray(stage.dependsOn) ? stage.dependsOn : []
+    const blockedBy = dependsOn.filter((depId) => statusById[depId] !== 'done')
+
+    if (blockedBy.length > 0) {
+      stageStates.push(pendingStageState(stage, blockedBy))
+      statusById[stage.id] = 'pending'
+      continue
+    }
+
+    let evaluated = evaluateStage(stage)
+
+    if (!evaluated.done && options.invoke) {
+      const agentCommand = resolveAgentCommand(stage.owner)
+      if (!agentCommand) {
+        throw new Error(
+          \`--invoke has no agent command for stage "\${stage.id}" (owner "\${stage.owner}"). Pass --agent-command or set orchestration.agentCommand for that role.\`
+        )
+      }
+      invocations.push(invokeAgent(stage, evaluated.state, agentCommand))
+      evaluated = evaluateStage(stage)
+    }
+
+    stageStates.push(evaluated.state)
+    statusById[stage.id] = evaluated.done ? 'done' : 'current'
+  }
+
+  // Multiple stages can be "current" at once (parallel work orders across
+  // owners). currentStage/workOrder stay as the first frontier for backward
+  // compatibility; currentStages/workOrders carry the full set.
+  const currentStages = stageStates
+    .filter((stage) => stage.status === 'current')
+    .map((stage) => stage.id)
+  const workOrders = currentStages.map((stageId) =>
+    buildWorkOrder(stageStates.find((stage) => stage.id === stageId), invocations)
+  )
+  const blocked = stageStates.some((stage) => stage.status !== 'done')
+  const doneCount = stageStates.filter((stage) => stage.status === 'done').length
+
+  return {
+    blocked,
+    doneCount,
+    state: {
+      schemaVersion: SCHEMA_VERSION,
+      workflow: manifest.workflow,
+      runId,
+      status: blocked ? 'blocked' : 'completed',
+      currentStage: currentStages[0] || null,
+      currentStages,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      stages: stageStates,
+      invocations,
+      workOrder: workOrders[0] || null,
+      workOrders
+    }
+  }
+}
+
+function stageGates(stage) {
+  const ownGates = Array.isArray(stage.gates) ? stage.gates : []
+  const nodeGates = Array.isArray(stage.nodes)
+    ? stage.nodes.flatMap((node) =>
+        (Array.isArray(node.gates) ? node.gates : []).map((gate) => ({ ...gate, nodeId: node.id }))
+      )
+    : []
+  return [...ownGates, ...nodeGates]
+}
+
+function asToolingArray(value) {
+  return Array.isArray(value) ? value : []
+}
+
+// Resolves the tools an invoked agent is scoped to for a stage: the union of the
+// stage's own skills/mcpServers/hooks and every sub-node's, plus a per-node
+// breakdown so an agent that owns a single node sees only its slice. This is what
+// turns the declared (and previously inert) per-node tooling into something the
+// orchestrator hands to the agent at invoke time, via the brief and env vars.
+function collectStageTooling(stage) {
+  const nodeScopes = (Array.isArray(stage.nodes) ? stage.nodes : []).map((node) => ({
+    id: node.id,
+    output: node.output || '',
+    skills: asToolingArray(node.skills),
+    mcpServers: asToolingArray(node.mcpServers),
+    hooks: asToolingArray(node.hooks)
+  }))
+  const union = (key) => [
+    ...new Set([...asToolingArray(stage[key]), ...nodeScopes.flatMap((node) => node[key])])
+  ]
+  return {
+    skills: union('skills'),
+    mcpServers: union('mcpServers'),
+    hooks: union('hooks'),
+    nodes: nodeScopes
+  }
 }
 
 function evaluateStage(stage) {
   const gates = []
   let commandBlocked = false
 
-  for (const gate of stage.gates || []) {
+  for (const gate of stageGates(stage)) {
     if (gate.type === 'command') {
       if (commandBlocked) {
         gates.push({ id: gate.id, type: 'command', status: 'skipped', exitCode: null })
@@ -175,7 +248,7 @@ function pendingStageState(stage, blockedBy = []) {
     dependsOn: Array.isArray(stage.dependsOn) ? stage.dependsOn : [],
     status: 'pending',
     blockedBy,
-    gates: (stage.gates || []).map((gate) => ({
+    gates: stageGates(stage).map((gate) => ({
       id: gate.id,
       type: gate.type,
       status: 'not_started',
@@ -220,10 +293,14 @@ function resolveAgentCommand(owner) {
 function invokeAgent(stage, stageState, agentCommand) {
   const workOrder = buildWorkOrder(stageState)
   const briefPath = writeBrief(stage.id, workOrder)
+  const tooling = collectStageTooling(stage)
   const command = renderAgentCommand(agentCommand, {
     stage: stage.id,
     role: stage.owner,
-    brief: briefPath
+    brief: briefPath,
+    skills: tooling.skills.join(','),
+    mcpServers: tooling.mcpServers.join(','),
+    hooks: tooling.hooks.join(',')
   })
   const invokedAt = new Date().toISOString()
   console.log(\`invoke:\${stage.owner} [\${stage.id}] \${command}\`)
@@ -234,7 +311,10 @@ function invokeAgent(stage, stageState, agentCommand) {
       ...process.env,
       TPAN_OPT_STAGE: stage.id,
       TPAN_OPT_ROLE: stage.owner,
-      TPAN_OPT_BRIEF: briefPath
+      TPAN_OPT_BRIEF: briefPath,
+      TPAN_OPT_SKILLS: tooling.skills.join(','),
+      TPAN_OPT_MCP_SERVERS: tooling.mcpServers.join(','),
+      TPAN_OPT_HOOKS: tooling.hooks.join(',')
     }
   })
 
@@ -264,7 +344,7 @@ function writeBrief(stageId, workOrder) {
 }
 
 function renderAgentCommand(template, values) {
-  return template.replace(/\\{(stage|role|brief)\\}/g, (match, key) =>
+  return template.replace(/\\{(stage|role|brief|skills|mcpServers|hooks)\\}/g, (match, key) =>
     values[key] === undefined ? match : values[key]
   )
 }
@@ -324,6 +404,7 @@ function buildWorkOrder(stageState, invocationLog = []) {
     }))
   const invocation =
     invocationLog.filter((item) => item.stageId === stageState.id).pop() || null
+  const tooling = collectStageTooling(stage)
 
   return {
     stageId: stageState.id,
@@ -335,6 +416,12 @@ function buildWorkOrder(stageState, invocationLog = []) {
       permissions: role.permissions || []
     },
     required: stage.required || [],
+    tooling: {
+      skills: tooling.skills,
+      mcpServers: tooling.mcpServers,
+      hooks: tooling.hooks
+    },
+    nodes: tooling.nodes,
     agents: collectAgentFiles(stageState.owner),
     pendingGates,
     invocation,
@@ -544,7 +631,7 @@ function createDefaultRunId() {
 }
 
 function parseArgs(args) {
-  const parsed = { runId: '', manualEvidencePath: '', stateDir: '', invoke: false, agentCommand: '' }
+  const parsed = { runId: '', manualEvidencePath: '', stateDir: '', invoke: false, agentCommand: '', loop: false, maxIterations: 25 }
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
@@ -569,6 +656,22 @@ function parseArgs(args) {
 
     if (arg === '--invoke') {
       parsed.invoke = true
+      continue
+    }
+
+    if (arg === '--loop') {
+      parsed.loop = true
+      continue
+    }
+
+    if (arg === '--max-iterations') {
+      const value = requireNextValue(args, index, '--max-iterations')
+      const count = Number.parseInt(value, 10)
+      if (!Number.isInteger(count) || count < 1) {
+        throw new Error('--max-iterations requires a positive integer')
+      }
+      parsed.maxIterations = count
+      index += 1
       continue
     }
 
@@ -603,8 +706,10 @@ function projectPath(...segments) {
 }
 
 function printHelp() {
-  console.log('Usage: node scripts/orchestrate-workflow.mjs [--run-id local] [--manual-evidence manual-evidence.json] [--state-dir .tpan-opt-co-worker/orchestrations/<id>] [--invoke [--agent-command "<cmd with {stage} {role} {brief}>"]]')
+  console.log('Usage: node scripts/orchestrate-workflow.mjs [--run-id local] [--manual-evidence manual-evidence.json] [--state-dir .tpan-opt-co-worker/orchestrations/<id>] [--invoke [--agent-command "<cmd with {stage} {role} {brief} {skills} {mcpServers} {hooks}>"]] [--loop [--max-iterations 25]]')
+  console.log('Agent-command placeholders {skills} {mcpServers} {hooks} (and env TPAN_OPT_SKILLS / TPAN_OPT_MCP_SERVERS / TPAN_OPT_HOOKS) carry the stage+node tool scope; the brief JSON also lists tooling and a per-node breakdown.')
   console.log('When the workflow persists orchestration.agentCommand (or per-role orchestration.agents), --invoke can omit --agent-command and the persisted command is used; --agent-command overrides it.')
+  console.log('--loop repeats the scheduling pass (default --invoke driving) until the run completes, stalls with no stage advancing (for example a pending manual gate), or reaches --max-iterations.')
 }
 `
 }

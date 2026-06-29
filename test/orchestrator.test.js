@@ -244,6 +244,92 @@ describe('generated orchestrator script', () => {
     }
   })
 
+  it('--loop retries the owner agent across passes until a command gate passes', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+    // The agent succeeds only on its second invocation: it bumps a counter and
+    // writes the flag the command gate checks once the counter reaches two. One
+    // pass (one invoke) is not enough; --loop must retry for the run to finish.
+    const agentCommand =
+      'node -e "const fs=require(\'node:fs\');const n=(fs.existsSync(\'c\')?Number(fs.readFileSync(\'c\',\'utf8\')):0)+1;fs.writeFileSync(\'c\',String(n));if(n>=2)fs.writeFileSync(\'flag.txt\',\'done\')"'
+    const retryWorkflow = {
+      name: 'retry-workflow',
+      version: '1.0.0',
+      roles: { engineer: { skills: ['tdd-workflow'], permissions: ['write_code'] } },
+      stages: [
+        {
+          id: 'build',
+          owner: 'engineer',
+          gates: [{ id: 'build_passes', type: 'command', command: 'test -f flag.txt' }]
+        }
+      ]
+    }
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(retryWorkflow), targetDir, { force: true })
+
+      // Single pass: one invoke -> counter 1, flag absent -> blocked.
+      const single = await runOrchestrator(targetDir, [
+        '--run-id',
+        'single',
+        '--invoke',
+        '--agent-command',
+        agentCommand
+      ])
+      assert.equal(single.code, 1)
+      assert.equal((await readState(targetDir, 'single')).status, 'blocked')
+
+      // Reset side effects, then --loop retries and completes on the second pass.
+      await rm(join(targetDir, 'c'), { force: true })
+      await rm(join(targetDir, 'flag.txt'), { force: true })
+      const { stdout } = await execFileAsync(
+        'node',
+        [
+          join(targetDir, 'scripts', 'orchestrate-workflow.mjs'),
+          '--run-id',
+          'looped',
+          '--invoke',
+          '--agent-command',
+          agentCommand,
+          '--loop'
+        ],
+        { cwd: targetDir }
+      )
+
+      const loopState = await readState(targetDir, 'looped')
+      assert.equal(loopState.status, 'completed')
+      assert.equal(loopState.stages[0].status, 'done')
+      assert.ok(loopState.invocations.length >= 2)
+      assert.match(stdout, /Pass 2\//)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('--loop stops without spinning when a manual gate stays pending', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(orchestratorWorkflow()), targetDir, {
+        force: true
+      })
+
+      const error = await runOrchestrator(targetDir, [
+        '--run-id',
+        'loop-stall',
+        '--loop',
+        '--max-iterations',
+        '5'
+      ])
+      assert.equal(error.code, 1)
+
+      const state = await readState(targetDir, 'loop-stall')
+      assert.equal(state.status, 'blocked')
+      assert.equal(state.currentStage, 'implement')
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('requires an agent command when --invoke is set', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
 
@@ -437,6 +523,65 @@ describe('generated orchestrator script', () => {
       await rm(targetDir, { recursive: true, force: true })
     }
   })
+
+  it('carries the stage+node tool scope into the work order brief', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(toolingWorkflow()), targetDir, { force: true })
+
+      const error = await runOrchestrator(targetDir, ['--run-id', 'scoped'])
+      assert.equal(error.code, 1)
+
+      const state = await readState(targetDir, 'scoped')
+      const { tooling, nodes } = state.workOrder
+      // Union of stage tooling and every node's tooling, de-duplicated.
+      assert.deepEqual(tooling.skills, ['stage-skill', 'unit-skill'])
+      assert.deepEqual(tooling.mcpServers, ['ctx7'])
+      assert.deepEqual(tooling.hooks, ['guard'])
+      // Per-node breakdown so an agent owning a single node sees only its slice.
+      const byId = Object.fromEntries(nodes.map((node) => [node.id, node]))
+      assert.deepEqual(byId.unit.skills, ['unit-skill'])
+      assert.deepEqual(byId.unit.hooks, ['guard'])
+      assert.deepEqual(byId.integration.mcpServers, ['ctx7'])
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('hands the tool scope to the invoked agent via env vars and command placeholders', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-orch-'))
+    const agentCommand =
+      'node -e "require(\'node:fs\').writeFileSync(\'scope.txt\',[process.env.TPAN_OPT_SKILLS,process.env.TPAN_OPT_MCP_SERVERS,process.env.TPAN_OPT_HOOKS].join(\'|\'))" # tools {skills}'
+
+    try {
+      await writeCompiledOutputs(compileWorkflow(toolingWorkflow()), targetDir, { force: true })
+
+      const error = await runOrchestrator(targetDir, [
+        '--run-id',
+        'invoked',
+        '--invoke',
+        '--agent-command',
+        agentCommand
+      ])
+      assert.equal(error.code, 1)
+
+      // Env vars delivered the union scope to the agent process.
+      const scope = await readFile(join(targetDir, 'scope.txt'), 'utf8')
+      assert.equal(scope, 'stage-skill,unit-skill|ctx7|guard')
+
+      // The {skills} placeholder expanded in the rendered (and persisted) command.
+      const invocation = JSON.parse(
+        await readFile(
+          join(targetDir, '.tpan-opt-co-worker', 'orchestrations', 'invoked', 'invocation-implement.json'),
+          'utf8'
+        )
+      )
+      assert.match(invocation.command, /tools stage-skill,unit-skill/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
 })
 
 async function runOrchestrator(targetDir, args) {
@@ -595,6 +740,32 @@ function orchestratorWorkflow() {
             type: 'manual',
             description: 'Release was approved.'
           }
+        ]
+      }
+    ]
+  }
+}
+
+// A single blocked stage (pending manual gate) whose tooling lives partly on the
+// stage and partly on its sub-nodes, so tests can assert the invoke-time union
+// and the per-node breakdown.
+function toolingWorkflow() {
+  return {
+    name: 'tooling-workflow',
+    version: '1.0.0',
+    mcpServers: { ctx7: { command: 'echo', args: ['ctx7'] } },
+    hooks: [{ id: 'guard', event: 'pre-tool', command: 'echo guard' }],
+    roles: { engineer: { skills: ['tdd'], permissions: ['run_tests'] } },
+    stages: [
+      {
+        id: 'implement',
+        owner: 'engineer',
+        skills: ['stage-skill'],
+        mcpServers: ['ctx7'],
+        gates: [{ id: 'human_approval', type: 'manual', description: 'Lead approves.' }],
+        nodes: [
+          { id: 'unit', owner: 'engineer', skills: ['unit-skill'], hooks: ['guard'], gates: [] },
+          { id: 'integration', owner: 'engineer', mcpServers: ['ctx7'], gates: [] }
         ]
       }
     ]

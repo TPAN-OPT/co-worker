@@ -1,4 +1,5 @@
 import { renderOrganizationMarkdown } from './organization-renderer.js'
+import { stageGates } from './stage-gates.js'
 
 export function renderClaudeMarkdown(workflow) {
   const agentList = Object.keys(workflow.roles)
@@ -9,7 +10,7 @@ export function renderClaudeMarkdown(workflow) {
     .map(
       (stage, index) => `${index + 1}. \`${stage.id}\` owned by \`${stage.owner}\`; output: ${
         stage.output ? `\`${stage.output}\`` : 'none'
-      }; gates: ${formatGateList(stage.gates)}`
+      }; gates: ${formatGateList(stageGates(stage))}`
     )
     .join('\n')
 
@@ -46,7 +47,7 @@ export function renderClaudeAgentMarkdown(roleId, role, workflow) {
 
 - Output: ${stage.output ? `\`${stage.output}\`` : 'none'}
 - Required work: ${formatInlineList(stage.required)}
-- Gates: ${formatGateList(stage.gates)}`
+- Gates: ${formatGateList(stageGates(stage))}`
     )
     .join('\n\n')
 

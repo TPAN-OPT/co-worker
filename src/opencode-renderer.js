@@ -1,4 +1,5 @@
 import { renderOrganizationMarkdown } from './organization-renderer.js'
+import { stageGates } from './stage-gates.js'
 
 export function renderOpenCodeConfig() {
   const config = {
@@ -29,7 +30,7 @@ export function renderOpenCodeAgentMarkdown(roleId, role, workflow) {
 
 - Output: ${stage.output ? `\`${stage.output}\`` : 'none'}
 - Required work: ${formatInlineList(stage.required)}
-- Gates: ${formatGateList(stage.gates)}`
+- Gates: ${formatGateList(stageGates(stage))}`
     )
     .join('\n\n')
 

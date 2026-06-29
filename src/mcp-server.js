@@ -8,6 +8,7 @@ import { writeCompiledOutputs } from './file-system.js'
 import { quickstartProject } from './init-commands.js'
 import { approveGate, nextWorkOrder } from './ops-commands.js'
 import { createCatalog } from './catalog-renderer.js'
+import { stageGates } from './stage-gates.js'
 
 // Hand-written, zero-dependency Model Context Protocol server. MCP's stdio
 // transport is newline-delimited JSON-RPC 2.0, so the whole server is a read
@@ -230,7 +231,7 @@ async function compileTool(args) {
 async function validateTool(args) {
   const source = await readWorkflowSource(args)
   const workflow = validateWorkflow(source)
-  const gates = workflow.stages.reduce((total, stage) => total + stage.gates.length, 0)
+  const gates = workflow.stages.reduce((total, stage) => total + stageGates(stage).length, 0)
   return textResult(
     [
       `Valid: ${workflow.name}@${workflow.version}`,

@@ -540,6 +540,7 @@ describe('compileWorkflow', () => {
       '.tpan-opt-co-worker/workflow.schema.json',
       'AGENTS.md',
       'CLAUDE.md',
+      'PLAYBOOK.md',
       'opencode.json',
       'scripts/list-runs.mjs',
       'scripts/orchestrate-workflow.mjs',

@@ -11,6 +11,13 @@ export function renderWorkflowSchema() {
     properties: {
       name: nonEmptyString('Workflow name.'),
       version: nonEmptyString('Workflow version.'),
+      mode: {
+        type: 'string',
+        enum: ['opt', 'team'],
+        default: 'opt',
+        description:
+          'Distribution target: "opt" drives the workflow with code agents via the orchestrator; "team" hands the same process to human teammates. Defaults to "opt".'
+      },
       organization: {
         type: 'object',
         additionalProperties: false,
@@ -165,6 +172,56 @@ export function renderWorkflowSchema() {
             ...stringArray(),
             description:
               'Stage ids (declared earlier) that must be done before this stage starts. Omit for sequential default; use [] for an independent branch.'
+          },
+          gates: {
+            type: 'array',
+            items: {
+              $ref: '#/$defs/gate'
+            }
+          },
+          skills: {
+            ...stringArray(),
+            description: 'Skill names scoped to this stage, in addition to the owner role skills.'
+          },
+          mcpServers: {
+            ...stringArray(),
+            description: 'MCP server ids (declared in the top-level mcpServers map) scoped to this stage.'
+          },
+          hooks: {
+            ...stringArray(),
+            description: 'Hook ids (declared in the top-level hooks list) scoped to this stage.'
+          },
+          nodes: {
+            type: 'array',
+            description:
+              'Optional sub-nodes (小节点) that decompose this stage into ordered steps, each able to bind its own skills, MCP servers, hooks, and gates.',
+            items: {
+              $ref: '#/$defs/node'
+            }
+          }
+        }
+      },
+      node: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: {
+          id: identifier('Node id (unique within the stage).'),
+          owner: identifier('Role id that owns the node. Defaults to the stage owner.'),
+          output: {
+            type: 'string'
+          },
+          skills: {
+            ...stringArray(),
+            description: 'Skill names scoped to this node.'
+          },
+          mcpServers: {
+            ...stringArray(),
+            description: 'MCP server ids (declared in the top-level mcpServers map) scoped to this node.'
+          },
+          hooks: {
+            ...stringArray(),
+            description: 'Hook ids (declared in the top-level hooks list) scoped to this node.'
           },
           gates: {
             type: 'array',
