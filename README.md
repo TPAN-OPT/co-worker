@@ -340,6 +340,26 @@ Team Standard
   -> Review, Approval, Release
 ```
 
+### Two modes: one workflow, two ways to hand it out
+
+You design **one** workflow — stages, sub-nodes, gates, and the tools each step uses.
+The top-level `mode` field only changes *who you hand it to*:
+
+- **`mode: opt`** (default) — hand it to code agents. Drive them with the orchestrator:
+  `node scripts/orchestrate-workflow.mjs --invoke --loop` auto-advances through every
+  stage until a human gate, scoping each agent to that step's skills/MCP/hooks.
+- **`mode: team`** — hand it to human teammates. Compiling emits **`PLAYBOOK.md`**, a
+  copy-paste checklist each person runs on their own product or module. Track everyone
+  side by side with **`tpan-opt-co-worker dashboard`** (one labelled run per module).
+
+The definition is identical; only the distribution target differs.
+
+A stage can hold **sub-nodes** (for example `ai-test` → `unit`, `integration`,
+`user-acceptance`), and any stage or sub-node can bind its own `skills`, `mcpServers`,
+and `hooks`. At `--invoke` those bindings reach the agent three ways: the work-order
+brief JSON, the `TPAN_OPT_SKILLS` / `TPAN_OPT_MCP_SERVERS` / `TPAN_OPT_HOOKS` env vars,
+and the `{skills}` / `{mcpServers}` / `{hooks}` agent-command placeholders.
+
 ## System Architecture
 
 ```text
@@ -453,19 +473,38 @@ stages:
         type: manual
 ```
 
+Stages can nest sub-nodes and bind tools per step, and the top-level `mode` chooses the hand-off target:
+
+```yaml
+mode: team            # or opt (default). Same definition either way.
+
+stages:
+  - id: ai-test
+    owner: engineer
+    skills: [test-strategy]          # stage-level tools
+    nodes:
+      - id: unit
+        skills: [unit-testing]       # node-level tools, delivered at --invoke
+        gates: [{ id: unit-pass, preset: node:test }]
+      - id: user-acceptance
+        gates: [{ id: uat-signoff, type: manual }]
+```
+
 ## Key Objects
 
 | Object | Purpose |
 | --- | --- |
 | `WorkflowTemplate` | A reusable team delivery process. |
 | `WorkflowRun` | One execution of a workflow against a project or task. |
-| `Stage` | A workflow phase with inputs, outputs, owner, and gates. |
+| `Stage` | A workflow phase with inputs, outputs, owner, gates, and optional sub-nodes. |
+| `Node` | A sub-step inside a stage (e.g. `ai-test` → `unit`/`integration`), with its own output, gates, and bound skills/MCP/hooks. |
 | `Role` | A human or agent responsibility boundary. |
 | `AgentProfile` | A concrete agent configuration with skills, tools, permissions, and behavior rules. |
 | `Skill` | A reusable instruction package for a specific capability. |
 | `McpServer` | A tool/data connector available to selected roles. |
 | `Hook` | Automation triggered before, during, or after workflow execution. |
 | `Gate` | A required condition before the workflow can move forward. |
+| `Playbook` | `PLAYBOOK.md`, the human-readable checklist a teammate runs end to end in `team` mode. |
 | `Artifact` | A durable output such as a plan, spec, patch, test report, review, or release note. |
 | `VerificationResult` | Evidence that a gate passed or failed. |
 | `Approval` | A human decision for sensitive or irreversible actions. |
@@ -526,6 +565,7 @@ A workflow can be compiled into repository-local assets such as:
 
 - `AGENTS.md`
 - `CLAUDE.md`
+- `PLAYBOOK.md` (human teammate checklist; the team-mode hand-off artifact)
 - `.codex/config.toml`
 - `.codex/agents/*.toml`
 - `.cursor/rules/*.mdc`
@@ -582,11 +622,12 @@ tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
 tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
 tpan-opt-co-worker status [--out .]
 tpan-opt-co-worker next [--out .]
+tpan-opt-co-worker dashboard [--out .]
 tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
 tpan-opt-co-worker mcp
 ```
 
-`status`, `next`, and `approve` drive a compiled repository from the command line. `status` prints the workflow and each stage's orchestration status; `next` prints the open work order(s) and the next action; `approve <gate> --by <approver>` records approver evidence for a manual gate and advances the orchestrator — so you never hand-edit `manual-evidence.json`. Pass `--stage` when a gate id is reused across stages. These share their core with the MCP `co_worker_next` / `co_worker_approve` tools, so the CLI and in-agent flows behave identically. `mcp` runs the MCP server (see [Install as a plugin (MCP)](#install-as-a-plugin-mcp)).
+`status`, `next`, `dashboard`, and `approve` drive a compiled repository from the command line. `status` prints the workflow and each stage's orchestration status (and, in `team` mode, points to `PLAYBOOK.md`); `next` prints the open work order(s) and the next action; `dashboard` aggregates the latest verification run per product/module into one side-by-side table — the team-mode view where each teammate runs the whole pipeline on a different module (label a run with `node scripts/run-workflow.mjs --module <name>`); `approve <gate> --by <approver>` records approver evidence for a manual gate and advances the orchestrator — so you never hand-edit `manual-evidence.json`. Pass `--stage` when a gate id is reused across stages. These share their core with the MCP `co_worker_next` / `co_worker_approve` tools, so the CLI and in-agent flows behave identically. `mcp` runs the MCP server (see [Install as a plugin (MCP)](#install-as-a-plugin-mcp)).
 
 `quickstart` is the one-command onboarding path: it runs the same scaffolding as `init`, then immediately compiles every harness asset and (unless `--no-demo`) runs a demo orchestration with the first stage pre-approved, so the generated console shows live stage progress the moment you open it. It defaults to the `minimal` template so it works in any empty directory with zero external gates. The CLI `compile` step remains the authoritative path for applying edited workflows.
 
@@ -616,6 +657,7 @@ Generated files:
 
 - `AGENTS.md`
 - `CLAUDE.md`
+- `PLAYBOOK.md` (human teammate checklist; the team-mode hand-off artifact)
 - `.codex/config.toml`
 - `.codex/agents/<role>.toml`
 - `.claude/agents/<role>.md`
@@ -661,10 +703,11 @@ The generated local runner reads the manifest, invokes verification, writes a st
 ```bash
 node scripts/run-workflow.mjs \
   --run-id feature-001 \
+  --module payments \
   --manual-evidence examples/manual-evidence.json
 ```
 
-The runner also maintains `.tpan-opt-co-worker/runs/index.json`. List local run history with:
+`--module <name>` labels the run with the product or module it covers, so `tpan-opt-co-worker dashboard` (and the console) can group runs per module — the team-mode pattern where each teammate runs the same pipeline on their own slice. The runner also maintains `.tpan-opt-co-worker/runs/index.json`. List local run history with:
 
 ```bash
 node scripts/list-runs.mjs
@@ -678,6 +721,8 @@ node scripts/orchestrate-workflow.mjs \
   --run-id feature-001 \
   --manual-evidence examples/manual-evidence.json
 ```
+
+Add `--invoke` to drive each ready stage's owner agent (with `--agent-command "<cmd>"`, or a persisted `orchestration.agentCommand`), and `--loop` to repeat the scheduling pass until the run completes, stalls at a pending manual gate, or hits `--max-iterations` (default 25). This is the OPT autopilot: agents advance the flow and only stop for a human gate. Each invocation is scoped to its stage+sub-node tooling via the brief JSON, the `TPAN_OPT_SKILLS` / `TPAN_OPT_MCP_SERVERS` / `TPAN_OPT_HOOKS` env vars, and `{skills}` / `{mcpServers}` / `{hooks}` command placeholders. Agents can never self-approve a manual gate.
 
 Stages declare dependencies with an optional `dependsOn` array of earlier stage ids; the array stays a valid topological order because a stage may only depend on stages declared before it (cycles are impossible). When `dependsOn` is omitted a stage defaults to depending on the immediately preceding stage, so a plain list of stages stays strictly sequential — the routing and approval boundary then sits at the first unsatisfied stage, exactly as before. Declaring dependencies turns the list into a DAG: stages that fan out from a shared prerequisite are scheduled in parallel, so several owners can hold open work orders at once (`state.currentStages` / `state.workOrders` carry the full set, with `currentStage` / `workOrder` kept as the first frontier for compatibility). A stage with any unfinished dependency stays `pending` and its command gates never run. Use an explicit empty `dependsOn: []` to opt a stage out of the sequential default and start it as an independent branch.
 

@@ -275,6 +275,15 @@ export function renderWebConsole(workflow) {
     .status.passed { background: #256f5b; }
     .status.pending { background: #8f5a13; }
     .status.failed { background: #a33b32; }
+    .run-module {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 1px 8px;
+      margin-right: 6px;
+      background: #2b3a55;
+      color: #cdd9f0;
+      font-size: 12px;
+    }
     .detail {
       border-top: 1px solid var(--line);
       padding: 12px 0;
@@ -338,7 +347,7 @@ export function renderWebConsole(workflow) {
     </svg>
     <div>
       <h1>${escapeHtml(workflow.name)}</h1>
-      <p class="muted">TPAN-OPT/CO-WORKER Console · workflow version ${escapeHtml(workflow.version)}</p>
+      <p class="muted">TPAN-OPT/CO-WORKER Console · workflow version ${escapeHtml(workflow.version)} · mode ${escapeHtml(workflow.mode || 'opt')}</p>
     </div>
   </header>
   <main>
@@ -621,8 +630,9 @@ ${renderOrchestrationRuntime()}
     function renderRun(run) {
       const rawStatus = String(run.status || 'pending')
       const status = normalizeStatus(rawStatus)
+      const moduleLabel = run.module ? '<span class="run-module">' + escapeHtml(run.module) + '</span> ' : ''
       return '<article class="run">' +
-        '<div><strong>' + escapeHtml(run.id || 'unknown-run') + '</strong><p class="muted">' + escapeHtml(run.runDir || '') + '</p>' + renderRunArtifactLinks(run) + '</div>' +
+        '<div>' + moduleLabel + '<strong>' + escapeHtml(run.id || 'unknown-run') + '</strong><p class="muted">' + escapeHtml(run.runDir || '') + '</p>' + renderRunArtifactLinks(run) + '</div>' +
         '<span class="status ' + status + '">' + escapeHtml(rawStatus) + '</span>' +
         '<time class="muted">' + escapeHtml(run.finishedAt || '') + '</time>' +
       '</article>'
