@@ -36,7 +36,30 @@ The broader team operating system language in this README describes the product 
 
 ## Quick Start
 
-TPAN-OPT/CO-WORKER is a no-dependency Node.js CLI. You need Node.js 22+ and npm 10+.
+If you already work inside a code agent (Claude Code, Codex, Cursor, …), the shortest path is to **install co-worker as a plugin and never leave your agent**. If you want a plain terminal flow or to script it, use the CLI directly (Option B). Either way you need Node.js 22+.
+
+### Option A — Install as a plugin (recommended for agent users)
+
+co-worker ships a zero-dependency MCP server that exposes the whole flow as callable tools, so your agent can scaffold, inspect, drive, and approve a governed workflow without you touching a terminal.
+
+**Claude Code** — install straight from the repo:
+
+```text
+/plugin marketplace add https://github.com/TPAN-OPT/co-worker
+/plugin install tpan-opt-co-worker@tpan-opt-co-worker
+```
+
+This clones the repo and registers the `co-worker` MCP server automatically (via `.mcp.json`) — no npm install, no manual config. Now just talk to your agent; the complete loop is five turns:
+
+1. **Scaffold** — "Use `co_worker_quickstart` to set up a workflow in `./my-repo`." It scaffolds `opt.workflow.json`, compiles every harness asset, seeds a demo run, and prints the console path.
+2. **See it** — open the printed `./my-repo/.tpan-opt-co-worker/console/index.html`. The console is already populated — first stage `done`, next stage an open work order.
+3. **Next** — "Call `co_worker_next` for `./my-repo`." It returns the open work order(s) and the next action.
+4. **Approve** — "Call `co_worker_approve` for gate `scope_confirmed` in stage `plan`, approved by me, on `./my-repo`." It records the approval as evidence, advances the orchestrator, and prints the next work order.
+5. **Repeat** — keep asking for `co_worker_next` → `co_worker_approve` until every stage is `done`.
+
+**Codex / Cursor / other MCP agents** — clone the repo, then point the agent at the local server. See [Install as a plugin (MCP)](#install-as-a-plugin-mcp) for the exact `config.toml` / JSON, then ask the agent to run the same `co_worker_quickstart` → `co_worker_next` → `co_worker_approve` chain.
+
+### Option B — Use the CLI directly
 
 The quick start is a single command — from an empty directory to a working, populated console:
 
@@ -51,6 +74,16 @@ open /path/to/target-repo/.tpan-opt-co-worker/console/index.html
 ```
 
 The console opens already populated — the first stage `done` and the next as an open work order — so you see the system working before learning any other command. Add `--no-demo` to skip the demo run, or `--template production-feature` for the fuller delivery workflow.
+
+Now drive the workflow from the CLI. These three commands are the whole daily loop — see where you are, get the next work order, approve a gate to advance — with no hand-edited evidence files (they share their core with the `co_worker_*` MCP tools above, so the CLI and in-agent flows behave identically):
+
+```bash
+node src/cli.js status   --out /path/to/target-repo   # where each stage stands
+node src/cli.js next     --out /path/to/target-repo   # the open work order(s) + next action
+node src/cli.js approve scope_confirmed --stage plan --by you@example.com --out /path/to/target-repo
+```
+
+`approve` records the approver as evidence, advances the orchestrator, and prints the next work order — so `next` → `approve` → `next` is the loop you repeat until every stage is `done`.
 
 To change the workflow, edit it in the console Designer (or `opt.workflow.json`) and re-apply:
 
@@ -68,11 +101,19 @@ The quickstart repo already contains a working example of everything in the "Wha
 - **Harness adapter layer** — one workflow fans out to every harness; see the generated files with `ls .codex .claude .cursor opencode.json .github/workflows scripts`.
 - **Quality gates** — `node scripts/verify-workflow.mjs` runs the stage gates and stops at the first failing or unmet one.
 - **Evidence chain** — `node scripts/run-workflow.mjs --run-id local` records `.tpan-opt-co-worker/runs/local/evidence.json` and `summary.md`.
-- **OPT Runtime** — `node scripts/orchestrate-workflow.mjs --run-id local` routes stages across owners and emits the next work order (this is what the quickstart demo seeded).
+- **OPT Runtime** — `node src/cli.js status` / `next` / `approve` route stages across owners, emit the next work order, and advance gates from the command line (this drives the orchestration the quickstart demo seeded; `node scripts/orchestrate-workflow.mjs --run-id local` is the underlying script).
 
 ### More commands (reference)
 
 The commands below give finer control over the same pipeline; the full surface is documented under [Current CLI](#current-cli). To develop this repository itself, run `npm test`.
+
+Interactively configure a workflow — template, team, policies, MCP servers, and lifecycle hooks — then write `opt.workflow.json` and compile every harness asset in one pass:
+
+```bash
+node src/cli.js wizard --out /path/to/target-repo
+```
+
+The wizard prompts for the starter template, an optional reusable team, organization policy packs, any MCP servers (local `command` + `args` + `env`, or remote `url` + transport), which roles each server is assigned to, and any lifecycle hooks (`pre-tool`, `post-tool`, `stop`, `user-prompt-submit`, `session-start`, with an optional tool matcher). It then compiles `.mcp.json`, `.codex/config.toml` MCP wiring, and `.claude/settings.json` hooks alongside the usual harness assets. See [Workflow nodes: MCP servers and hooks](#workflow-nodes-mcp-servers-and-hooks) for the schema the wizard produces.
 
 Create a starter workflow in a target repository without compiling or running a demo:
 
@@ -258,26 +299,28 @@ co-worker ships a zero-dependency MCP server (`tpan-opt-co-worker mcp`, newline-
 
 The plugin registers the `co-worker` MCP server (via `.mcp.json`) automatically.
 
-**Codex** — add the server to `~/.codex/config.toml`:
+**Codex** — clone the repo first, then point `~/.codex/config.toml` at the local server:
 
 ```toml
 [mcp_servers.co-worker]
-command = "npx"
-args = ["-y", "tpan-opt-co-worker", "mcp"]
+command = "node"
+args = ["/absolute/path/to/co-worker/src/cli.js", "mcp"]
 ```
 
-**Other MCP-capable agents (Cursor, domestic code agents, custom runners)** — point them at the same server:
+**Other MCP-capable agents (Cursor, domestic code agents, custom runners)** — point them at the same local server:
 
 ```json
 {
   "mcpServers": {
     "co-worker": {
-      "command": "npx",
-      "args": ["-y", "tpan-opt-co-worker", "mcp"]
+      "command": "node",
+      "args": ["/absolute/path/to/co-worker/src/cli.js", "mcp"]
     }
   }
 }
 ```
+
+> The package is not published to npm yet. Once it is, the Codex and generic configs above can use `command: "npx"`, `args: ["-y", "tpan-opt-co-worker", "mcp"]` instead of an absolute clone path. The Claude Code plugin path needs no npm publish — it installs straight from the repo.
 
 Then, from inside the agent, ask it to run `co_worker_quickstart` to scaffold a populated console, `co_worker_next` to see the open work order, and `co_worker_approve` to sign off a manual gate and advance — no hand-edited evidence files. Agents that only read repository files still work through the generated `CLAUDE.md`, `.codex/`, `.cursor/`, and `opencode.json` assets.
 
@@ -427,6 +470,36 @@ stages:
 | `VerificationResult` | Evidence that a gate passed or failed. |
 | `Approval` | A human decision for sensitive or irreversible actions. |
 
+## Workflow nodes: MCP servers and hooks
+
+Skills are configured per role. MCP servers and lifecycle hooks are first-class workflow nodes: declare them once at the top level, then reference servers per role. The `wizard` command collects all of this interactively, but you can also author it by hand in `opt.workflow.json`:
+
+```json
+{
+  "name": "my-workflow",
+  "mcpServers": {
+    "co-worker": { "command": "node", "args": ["src/cli.js", "mcp"] },
+    "docs": { "url": "https://mcp.example.com/sse", "transport": "sse" }
+  },
+  "roles": {
+    "lead": { "mcpServers": ["co-worker"] }
+  },
+  "hooks": [
+    { "id": "preflight", "event": "pre-tool", "command": "node scripts/preflight.mjs", "matcher": "Bash" }
+  ]
+}
+```
+
+- **`mcpServers`** is a map of server id to either a local process (`command`, optional `args`, optional `env`) or a remote endpoint (`url`, optional `transport` — `stdio`/`sse`/`http`). A server is local **xor** remote. Each role may list assigned server ids in `roles.<id>.mcpServers`, which must reference declared servers.
+- **`hooks`** is an array of `{ id, event, command }`, where `event` is one of `pre-tool`, `post-tool`, `stop`, `user-prompt-submit`, `session-start`. Tool events (`pre-tool`/`post-tool`) accept an optional `matcher` to scope by tool name. Each `id` must be a unique identifier.
+
+When a workflow declares either node, compiling emits the additional harness-native assets:
+
+- `.mcp.json` (Claude Code / generic MCP) and `[mcp_servers.*]` tables in `.codex/config.toml`, plus per-role MCP listings in `AGENTS.md` and the agent files.
+- `.claude/settings.json` (Claude Code native hooks, grouped by `PreToolUse`/`PostToolUse`/`Stop`/`UserPromptSubmit`/`SessionStart`) and a harness-neutral `.tpan-opt-co-worker/hooks.json` manifest, plus a `## Hooks` section in `AGENTS.md`.
+
+Workflows that declare neither node compile byte-identically to before, so these files only appear when you opt in.
+
 ## OPT: One Person Team
 
 OPT mode lets one human lead operate a structured virtual team:
@@ -496,6 +569,7 @@ GitHub Actions runs the same quality gates on `main` pushes and pull requests fo
 
 ```text
 tpan-opt-co-worker quickstart --out . [--template minimal] [--team product-delivery] [--name my-workflow] [--no-demo] [--force]
+tpan-opt-co-worker wizard --out . [--force]
 tpan-opt-co-worker init --out . [--template production-feature] [--team product-delivery] [--policy quality-standard] [--name production-feature-workflow] [--force]
 tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
 tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
@@ -515,6 +589,8 @@ tpan-opt-co-worker mcp
 `status`, `next`, and `approve` drive a compiled repository from the command line. `status` prints the workflow and each stage's orchestration status; `next` prints the open work order(s) and the next action; `approve <gate> --by <approver>` records approver evidence for a manual gate and advances the orchestrator — so you never hand-edit `manual-evidence.json`. Pass `--stage` when a gate id is reused across stages. These share their core with the MCP `co_worker_next` / `co_worker_approve` tools, so the CLI and in-agent flows behave identically. `mcp` runs the MCP server (see [Install as a plugin (MCP)](#install-as-a-plugin-mcp)).
 
 `quickstart` is the one-command onboarding path: it runs the same scaffolding as `init`, then immediately compiles every harness asset and (unless `--no-demo`) runs a demo orchestration with the first stage pre-approved, so the generated console shows live stage progress the moment you open it. It defaults to the `minimal` template so it works in any empty directory with zero external gates. The CLI `compile` step remains the authoritative path for applying edited workflows.
+
+`wizard` is the interactive authoring path: it prompts for the template, optional reusable team, policy packs, MCP servers, per-role MCP assignments, and lifecycle hooks, then writes `opt.workflow.json` and compiles every harness asset (including `.mcp.json`, `.codex/config.toml` MCP wiring, and `.claude/settings.json` hooks) into `--out`. Press Enter to accept each `[default]`; answer prompts by number or id. See [Workflow nodes: MCP servers and hooks](#workflow-nodes-mcp-servers-and-hooks) for the schema it produces. It refuses to overwrite existing files unless `--force` is provided.
 
 `init` writes a starter `opt.workflow.json` from a named workflow template. The default `production-feature` template includes planner, engineer, reviewer, and release-manager roles plus a production delivery flow. Passing `--team <id>` uses the reusable team's recommended template unless `--template` is also set, and records `organization.team` plus recommended policy ids in the generated workflow. Passing `--policy <id>` appends validated organization policy packs; repeated policies are deduplicated while preserving order. When a selected policy contributes an automatable rule (currently `dependency_audit` from `security-baseline`), `init` injects a dedicated `policy_compliance` stage with the matching command gate (for example `npm:audit-high`) ahead of the final stage, so the rule is enforced during verification rather than only documented. Non-automatable rules stay advisory prompt text in the generated instructions. It refuses to overwrite an existing workflow unless `--force` is provided.
 

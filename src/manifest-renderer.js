@@ -10,6 +10,8 @@ export function renderWorkflowManifest(workflow) {
       version: workflow.version
     },
     ...(workflow.organization ? { organization: workflow.organization } : {}),
+    ...(workflow.mcpServers ? { mcpServers: workflow.mcpServers } : {}),
+    ...(workflow.hooks ? { hooks: workflow.hooks } : {}),
     roles: workflow.roles,
     stages: workflow.stages,
     harnesses: {
@@ -23,7 +25,8 @@ export function renderWorkflowManifest(workflow) {
         context: 'CLAUDE.md',
         agents: Object.fromEntries(
           roleIds.map((roleId) => [roleId, `.claude/agents/${roleId}.md`])
-        )
+        ),
+        ...(workflow.hooks ? { settings: '.claude/settings.json' } : {})
       },
       cursor: {
         rules: ['.cursor/rules/tpan-opt-co-worker.mdc']
@@ -60,7 +63,18 @@ export function renderWorkflowManifest(workflow) {
         catalogScript: '.tpan-opt-co-worker/console/catalog.js',
         orchestration: '.tpan-opt-co-worker/console/orchestration.json',
         orchestrationScript: '.tpan-opt-co-worker/console/orchestration.js'
-      }
+      },
+      ...(workflow.mcpServers
+        ? { mcp: { config: '.mcp.json', codexConfig: '.codex/config.toml' } }
+        : {}),
+      ...(workflow.hooks
+        ? {
+            hooks: {
+              claudeSettings: '.claude/settings.json',
+              manifest: '.tpan-opt-co-worker/hooks.json'
+            }
+          }
+        : {})
     },
     verification: {
       command: 'node scripts/verify-workflow.mjs',
