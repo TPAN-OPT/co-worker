@@ -9,6 +9,7 @@ export function renderWorkflowManifest(workflow) {
       name: workflow.name,
       version: workflow.version
     },
+    mode: workflow.mode || 'opt',
     ...(workflow.organization ? { organization: workflow.organization } : {}),
     ...(workflow.mcpServers ? { mcpServers: workflow.mcpServers } : {}),
     ...(workflow.hooks ? { hooks: workflow.hooks } : {}),
@@ -40,6 +41,9 @@ export function renderWorkflowManifest(workflow) {
       ci: {
         githubActions: '.github/workflows/tpan-opt-co-worker-verify.yml',
         gitlabCi: '.gitlab-ci.yml'
+      },
+      team: {
+        playbook: 'PLAYBOOK.md'
       },
       localRunner: {
         script: 'scripts/run-workflow.mjs',

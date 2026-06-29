@@ -1,6 +1,7 @@
 import { renderOrganizationMarkdown } from './organization-renderer.js'
 import { renderHooksMarkdown } from './hooks-renderer.js'
 import { workflowHasMcpServers } from './mcp-config-renderer.js'
+import { stageGates } from './stage-gates.js'
 
 export function renderAgentsMarkdown(workflow) {
   const organizationSection = renderOrganizationMarkdown(workflow.organization)
@@ -23,7 +24,7 @@ ${role.description}
 - Owner: \`${stage.owner}\`
 - Output: ${stage.output ? `\`${stage.output}\`` : 'none'}
 - Required work: ${formatInlineList(stage.required)}
-- Gates: ${formatGateList(stage.gates)}`
+- Gates: ${formatGateList(stageGates(stage))}`
     )
     .join('\n\n')
 
