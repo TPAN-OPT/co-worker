@@ -91,6 +91,13 @@ describe('catalog CLI', () => {
         defaultWorkflowName: 'production-feature-workflow'
       },
       {
+        id: 'opt-demo',
+        name: 'OPT Demo Team Workflow',
+        description:
+          'Runnable four-role agent team (planner, engineer, reviewer, lead) driven end to end by the bundled demo agent; ends at one human approval.',
+        defaultWorkflowName: 'opt-demo-workflow'
+      },
+      {
         id: 'minimal',
         name: 'Minimal Evidence Workflow',
         description:
@@ -195,7 +202,7 @@ describe('catalog CLI', () => {
 
     assert.ok(stdout.includes('TPAN-OPT/CO-WORKER catalog'))
     assert.match(stdout, /Presets: 5/)
-    assert.match(stdout, /Templates: 2/)
+    assert.match(stdout, /Templates: 3/)
     assert.match(stdout, /Policies: 3/)
     assert.match(stdout, /Teams: 3/)
     assert.match(stdout, /Marketplace: 5/)

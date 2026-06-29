@@ -33,7 +33,7 @@ const TOOLS = [
         template: {
           type: 'string',
           enum: ['minimal', 'production-feature'],
-          description: 'Workflow template. Defaults to minimal.'
+          description: 'Workflow template. Defaults to opt-demo (runnable agent team).'
         },
         demo: {
           type: 'boolean',
@@ -198,13 +198,13 @@ async function quickstartTool(args) {
   const result = await quickstartProject({
     out: args.out,
     name: typeof args.name === 'string' ? args.name : '',
-    template: typeof args.template === 'string' ? args.template : 'minimal',
+    template: typeof args.template === 'string' ? args.template : 'opt-demo',
     templateSpecified: typeof args.template === 'string',
     team: '',
     policyIds: [],
     force: true,
     demo: args.demo !== false,
-    runId: 'demo'
+    runId: 'local'
   })
 
   const consolePath = resolve(result.targetDir, '.tpan-opt-co-worker', 'console', 'index.html')
@@ -212,7 +212,17 @@ async function quickstartTool(args) {
     `Scaffolded ${result.workflowPath} from template ${result.template}.`,
     `Compiled ${result.assetCount} harness assets into ${result.targetDir}.`
   ]
-  if (result.demo && result.demo.ran) {
+  if (result.demo && result.demo.ran && result.demo.drove) {
+    lines.push(
+      `Drove the agent team end to end (run "${result.demo.runId}"): each owner agent produced an artifact and the run is blocked on one human approval.`
+    )
+    if (result.demo.approveGate) {
+      const stageFlag = result.demo.approveStage ? ` stage ${result.demo.approveStage}` : ''
+      lines.push(
+        `Finish it: call co_worker_approve for gate ${result.demo.approveGate}${stageFlag}, approved by you.`
+      )
+    }
+  } else if (result.demo && result.demo.ran) {
     lines.push(`Seeded demo orchestration run "${result.demo.runId}".`)
   }
   lines.push(`Open the console: ${consolePath}`)

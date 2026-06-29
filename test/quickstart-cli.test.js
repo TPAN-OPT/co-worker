@@ -19,7 +19,7 @@ async function readConsoleOrchestration(targetDir) {
 }
 
 describe('quickstart CLI', () => {
-  it('scaffolds, compiles, and seeds a demo run that populates the console', async () => {
+  it('runs the four-role agent team end to end and stops at one human approval', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-quickstart-'))
 
     try {
@@ -30,11 +30,13 @@ describe('quickstart CLI', () => {
         targetDir,
         '--name',
         'quickstart-demo',
+        '--no-open',
         '--force'
       ])
 
       assert.match(stdout, /Compiled \d+ harness assets/)
-      assert.match(stdout, /Seeded a demo orchestration run/)
+      assert.match(stdout, /agent team just ran end to end/)
+      assert.match(stdout, /approve human_approval --stage ship --by you/)
       assert.match(stdout, /Quickstart ready/)
 
       const workflow = JSON.parse(
@@ -42,13 +44,25 @@ describe('quickstart CLI', () => {
       )
       assert.equal(workflow.name, 'quickstart-demo')
 
-      // The compiled console exists and the demo run populated it: the first
-      // stage is approved/done and the workflow is blocked on a later stage.
+      // The demo run drove every owner agent: the run is blocked only on the
+      // final human-approval gate, and every earlier stage is done.
       await readFile(join(targetDir, '.tpan-opt-co-worker', 'console', 'index.html'), 'utf8')
       const orchestration = await readConsoleOrchestration(targetDir)
       assert.ok(orchestration.current, 'expected the demo run to populate orchestration state')
       assert.equal(orchestration.current.status, 'blocked')
       assert.equal(orchestration.current.stages[0].status, 'done')
+
+      // The bundled demo agent was really invoked once per role and produced a
+      // visible artifact for each stage — the point of the demo.
+      const invocations = orchestration.current.invocations || []
+      assert.equal(invocations.length, 4)
+      assert.ok(invocations.every((invocation) => invocation.status === 'completed'))
+      for (const stage of ['clarify', 'implement', 'review', 'ship']) {
+        await readFile(
+          join(targetDir, '.tpan-opt-co-worker', 'demo', 'artifacts', `${stage}.md`),
+          'utf8'
+        )
+      }
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
@@ -64,11 +78,12 @@ describe('quickstart CLI', () => {
         '--out',
         targetDir,
         '--no-demo',
+        '--no-open',
         '--force'
       ])
 
       assert.match(stdout, /Quickstart ready/)
-      assert.doesNotMatch(stdout, /Seeded a demo orchestration run/)
+      assert.doesNotMatch(stdout, /agent team just ran end to end/)
 
       await readFile(join(targetDir, '.tpan-opt-co-worker', 'console', 'index.html'), 'utf8')
       const orchestration = await readConsoleOrchestration(targetDir)

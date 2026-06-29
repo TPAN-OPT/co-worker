@@ -18,7 +18,7 @@ describe('status / next / approve CLI', () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-ops-'))
 
     try {
-      await run(['quickstart', '--out', targetDir, '--no-demo', '--force'])
+      await run(['quickstart', '--out', targetDir, '--template', 'minimal', '--no-demo', '--force'])
 
       const status = await run(['status', '--out', targetDir])
       assert.match(status.stdout, /Workflow: /)
@@ -53,8 +53,39 @@ describe('status / next / approve CLI', () => {
     }
   })
 
+  it('inspects a specific run with --run-id on status and next', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-ops-runid-'))
+
+    try {
+      // quickstart seeds a real run under the default run id "local".
+      await run(['quickstart', '--out', targetDir, '--no-open', '--force'])
+
+      // The named run resolves to that run's own state file.
+      const statusLocal = await run(['status', '--out', targetDir, '--run-id', 'local'])
+      assert.match(statusLocal.stdout, /Orchestration: blocked/)
+      assert.match(statusLocal.stdout, /done\s+clarify/)
+
+      const nextLocal = await run(['next', '--out', targetDir, '--run-id', 'local'])
+      assert.match(nextLocal.stdout, /Status: blocked/)
+      assert.match(nextLocal.stdout, /ship/)
+
+      // An unknown run id reports no recorded run rather than the latest one.
+      const nextMissing = await run(['next', '--out', targetDir, '--run-id', 'nope'])
+      assert.match(nextMissing.stdout, /No orchestration run recorded yet for run "nope"/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
   it('errors clearly when approve is missing required arguments', async () => {
     await assert.rejects(() => run(['approve', '--out', '.']), /approve requires a gate id/)
     await assert.rejects(() => run(['approve', 'some_gate']), /approve requires --by/)
+  })
+
+  it('rejects --run-id on dashboard, which aggregates across runs', async () => {
+    await assert.rejects(
+      () => run(['dashboard', '--out', '.', '--run-id', 'x']),
+      /Unknown dashboard option "--run-id"/
+    )
   })
 })

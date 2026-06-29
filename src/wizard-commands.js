@@ -34,6 +34,7 @@ export function buildWizardWorkflow(answers) {
   const mcpServers = answers.mcpServers || {}
   const roleMcp = answers.roleMcp || {}
   const hooks = answers.hooks || []
+  const agentCommand = (answers.agentCommand || '').trim()
 
   const roles = Object.fromEntries(
     Object.entries(base.roles).map(([roleId, role]) => {
@@ -42,12 +43,26 @@ export function buildWizardWorkflow(answers) {
     })
   )
 
+  // A committed orchestration.agentCommand lets `orchestrate --invoke` drive each
+  // stage's owner agent with no flags. Merge with any agentCommand the chosen
+  // template already persists (e.g. opt-demo) so an explicit answer wins.
+  const orchestration = mergeOrchestration(base.orchestration, agentCommand)
+
   return {
     ...base,
     ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+    ...(orchestration ? { orchestration } : {}),
     roles,
     ...(hooks.length > 0 ? { hooks } : {})
   }
+}
+
+function mergeOrchestration(baseOrchestration, agentCommand) {
+  if (!agentCommand) {
+    return baseOrchestration || null
+  }
+
+  return { ...(baseOrchestration || {}), agentCommand }
 }
 
 export async function runWizard({
@@ -118,8 +133,21 @@ async function collectWizardAnswers(rl, output) {
   const mcpServers = await collectMcpServers(rl, output)
   const roleMcp = await collectRoleMcpAssignments(rl, output, template, team, policyIds, mcpServers)
   const hooks = await collectHooks(rl, output)
+  const agentCommand = await collectAgentCommand(rl, output)
 
-  return { name, template, team, policyIds, mcpServers, roleMcp, hooks }
+  return { name, template, team, policyIds, mcpServers, roleMcp, hooks, agentCommand }
+}
+
+// Optional: commit an orchestrator agent command into the workflow so
+// `orchestrate-workflow.mjs --invoke` drives each stage's owner agent with no
+// flags. Placeholders {stage} {role} {brief} {skills} {mcpServers} {hooks} are
+// substituted per invocation. Blank leaves the template's default (if any).
+async function collectAgentCommand(rl, output) {
+  write(output, '')
+  write(output, 'Agent command for the orchestrator (--invoke). Blank to skip.')
+  write(output, '  Placeholders: {stage} {role} {brief} {skills} {mcpServers} {hooks}')
+  write(output, "  Example: claude -p \"Do stage {stage} from {brief}\"")
+  return askText(rl, 'Agent command', '')
 }
 
 // Loops until the operator declines to add another MCP server. Each server is
@@ -371,9 +399,15 @@ function printWizardSummary(output, workflow) {
   if (workflow.hooks) {
     write(output, '  3. Confirm .claude/settings.json hooks before relying on them.')
   }
+  if (workflow.orchestration && workflow.orchestration.agentCommand) {
+    write(
+      output,
+      '  4. Drive the team: node scripts/orchestrate-workflow.mjs --invoke --loop (uses your committed agent command).'
+    )
+  }
   write(
     output,
-    '  4. Re-apply after edits: tpan-opt-co-worker compile --workflow opt.workflow.json --out . --force'
+    '  5. Re-apply after edits: tpan-opt-co-worker compile --workflow opt.workflow.json --out . --force'
   )
 }
 
@@ -384,8 +418,8 @@ function printWizardHelp(output) {
   tpan-opt-co-worker wizard [--out .] [--force]
 
 Interactively configure a workflow — template, team, policies, MCP servers,
-and lifecycle hooks — then write opt.workflow.json and compile every harness
-asset.
+lifecycle hooks, and an optional orchestrator agent command — then write
+opt.workflow.json and compile every harness asset.
 
 Options:
   --out <dir>  Output repository directory. Defaults to current directory.

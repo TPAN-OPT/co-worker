@@ -454,8 +454,8 @@ Usage:
   tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
   tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
   tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
-  tpan-opt-co-worker status [--out .]
-  tpan-opt-co-worker next [--out .]
+  tpan-opt-co-worker status [--out .] [--run-id <id>]
+  tpan-opt-co-worker next [--out .] [--run-id <id>]
   tpan-opt-co-worker dashboard [--out .]
   tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
   tpan-opt-co-worker mcp

@@ -71,7 +71,21 @@ describe('buildWizardWorkflow', () => {
 
     assert.equal(Object.hasOwn(workflow, 'mcpServers'), false)
     assert.equal(Object.hasOwn(workflow, 'hooks'), false)
+    assert.equal(Object.hasOwn(workflow, 'orchestration'), false)
     assert.equal(Object.hasOwn(workflow.roles.lead, 'mcpServers'), false)
+  })
+
+  it('commits an orchestration agent command when one is provided', () => {
+    const workflow = buildWizardWorkflow({
+      name: 'invoke-flow',
+      template: 'minimal',
+      policyIds: [],
+      agentCommand: '  codex exec --brief {brief}  '
+    })
+
+    // Trimmed and validates as a real workflow.
+    assert.equal(workflow.orchestration.agentCommand, 'codex exec --brief {brief}')
+    assert.equal(validateWorkflow(workflow).name, 'invoke-flow')
   })
 })
 
@@ -98,7 +112,8 @@ describe('runWizard interactive flow', () => {
       'node scripts/preflight.mjs', // command
       'Bash', // matcher
       '', // description
-      'n' // add another hook?
+      'n', // add another hook?
+      'claude -p "Do stage {stage} from {brief}"' // agent command for --invoke
     ])
     const output = capturingOutput()
 
@@ -112,6 +127,10 @@ describe('runWizard interactive flow', () => {
       assert.ok(workflow.mcpServers['co-worker'])
       assert.deepEqual(workflow.roles.lead.mcpServers, ['co-worker'])
       assert.equal(workflow.hooks[0].id, 'preflight')
+      assert.equal(
+        workflow.orchestration.agentCommand,
+        'claude -p "Do stage {stage} from {brief}"'
+      )
 
       const mcpJson = JSON.parse(await readFile(join(targetDir, '.mcp.json'), 'utf8'))
       assert.ok(mcpJson.mcpServers['co-worker'])

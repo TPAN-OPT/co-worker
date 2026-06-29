@@ -72,7 +72,11 @@ describe('MCP server tools', () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-mcp-'))
 
     try {
-      const quickstart = await callTool('co_worker_quickstart', { out: targetDir, demo: false })
+      const quickstart = await callTool('co_worker_quickstart', {
+        out: targetDir,
+        template: 'minimal',
+        demo: false
+      })
       assert.ok(!quickstart.isError)
       assert.match(text(quickstart), /Compiled \d+ harness assets/)
       await readFile(join(targetDir, 'opt.workflow.json'), 'utf8')
