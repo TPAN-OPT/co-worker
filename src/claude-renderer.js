@@ -63,6 +63,10 @@ Act as \`${roleId}\` for the \`${workflow.name}\` workflow.
 
 ${formatBulletList(role.skills)}
 
+## MCP Servers
+
+${formatBulletList(role.mcpServers || [])}
+
 ## Permissions
 
 ${formatBulletList(role.permissions)}

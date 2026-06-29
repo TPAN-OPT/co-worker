@@ -11,6 +11,13 @@ import {
 } from './claude-renderer.js'
 import { renderGithubAction, renderGitlabCi } from './ci-renderer.js'
 import { renderCursorRule } from './cursor-renderer.js'
+import { renderMcpJson, workflowHasMcpServers } from './mcp-config-renderer.js'
+import {
+  renderClaudeSettings,
+  renderHooksManifest,
+  renderHooksMarkdown,
+  workflowHasHooks
+} from './hooks-renderer.js'
 import { renderLocalRunnerScript } from './local-runner-renderer.js'
 import { renderOrchestratorScript } from './orchestrator-renderer.js'
 import { renderWorkflowManifest } from './manifest-renderer.js'
@@ -21,26 +28,36 @@ import {
   renderOpenCodeAgentMarkdown,
   renderOpenCodeConfig
 } from './opencode-renderer.js'
-import {
-  renderOrganizationInline,
-  renderOrganizationMarkdown
-} from './organization-renderer.js'
+import { renderAgentsMarkdown, renderPullRequestTemplate } from './agents-renderer.js'
+import { renderAgentToml, renderCodexConfig } from './codex-renderer.js'
 import { renderWebConsole } from './web-console-renderer.js'
 
 const WORKFLOW_FIELDS = [
   'name',
   'version',
   'organization',
+  'mcpServers',
   'gatePresets',
   'roles',
   'stages',
+  'hooks',
   'orchestration'
 ]
 const ORGANIZATION_FIELDS = ['team', 'policies']
 const ORCHESTRATION_FIELDS = ['agentCommand', 'agents']
-const ROLE_FIELDS = ['description', 'skills', 'permissions']
+const ROLE_FIELDS = ['description', 'skills', 'permissions', 'mcpServers']
 const STAGE_FIELDS = ['id', 'owner', 'output', 'required', 'dependsOn', 'gates']
 const GATE_FIELDS = ['id', 'type', 'preset', 'description', 'command']
+const MCP_SERVER_FIELDS = ['command', 'args', 'env', 'url', 'transport', 'description']
+const MCP_TRANSPORTS = ['stdio', 'sse', 'http']
+const HOOK_FIELDS = ['id', 'event', 'command', 'matcher', 'description']
+const HOOK_EVENTS = [
+  'pre-tool',
+  'post-tool',
+  'stop',
+  'user-prompt-submit',
+  'session-start'
+]
 
 export function validateWorkflow(input) {
   if (!isPlainObject(input)) {
@@ -51,20 +68,131 @@ export function validateWorkflow(input) {
   const name = requireNonEmptyString(input.name, 'Workflow name')
   const version = requireNonEmptyString(input.version, 'Workflow version')
   const organization = normalizeOrganization(input.organization)
-  const roles = normalizeRoles(input.roles)
+  const mcpServers = normalizeMcpServers(input.mcpServers)
+  const roles = normalizeRoles(input.roles, new Set(Object.keys(mcpServers)))
   const gatePresetRegistry = createGatePresetRegistry(input.gatePresets)
   const gatePresets = getCustomGatePresets(gatePresetRegistry)
   const stages = normalizeStages(input.stages, roles, gatePresetRegistry)
+  const hooks = normalizeHooks(input.hooks)
   const orchestration = normalizeOrchestration(input.orchestration, roles)
 
   return deepFreeze({
     name,
     version,
     ...(organization ? { organization } : {}),
+    ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
     gatePresets,
     roles,
     stages,
+    ...(hooks.length > 0 ? { hooks } : {}),
     ...(orchestration ? { orchestration } : {})
+  })
+}
+
+// MCP servers are declared once at the workflow level and referenced by id from
+// roles. A server is either a local stdio process (command + args) or a remote
+// endpoint (url), never both, so the generated .mcp.json and Codex
+// [mcp_servers.*] blocks always have an unambiguous transport.
+function normalizeMcpServers(servers) {
+  if (servers === undefined) {
+    return {}
+  }
+
+  if (!isPlainObject(servers)) {
+    throw new Error('Workflow mcpServers must be an object')
+  }
+
+  return Object.fromEntries(
+    Object.entries(servers).map(([name, server]) => {
+      validateIdentifier(name, `MCP server id "${name}"`)
+      if (!isPlainObject(server)) {
+        throw new Error(`MCP server "${name}" must be an object`)
+      }
+
+      assertKnownFields(server, MCP_SERVER_FIELDS, `MCP server "${name}"`)
+      const hasCommand = server.command !== undefined
+      const hasUrl = server.url !== undefined
+      if (!hasCommand && !hasUrl) {
+        throw new Error(`MCP server "${name}" must include a command or url`)
+      }
+      if (hasCommand && hasUrl) {
+        throw new Error(`MCP server "${name}" must not set both command and url`)
+      }
+
+      const command = hasCommand
+        ? requireNonEmptyString(server.command, `MCP server "${name}" command`)
+        : ''
+      const url = hasUrl
+        ? requireNonEmptyString(server.url, `MCP server "${name}" url`)
+        : ''
+      const args = normalizeStringArray(server.args, `MCP server "${name}" args`, {
+        optional: true
+      })
+      const env = normalizeEnvObject(server.env, `MCP server "${name}" env`)
+      const transport =
+        server.transport !== undefined
+          ? normalizeEnum(server.transport, MCP_TRANSPORTS, `MCP server "${name}" transport`)
+          : ''
+      const description = optionalString(server.description)
+
+      return [
+        name,
+        {
+          ...(command ? { command } : {}),
+          ...(args.length > 0 ? { args } : {}),
+          ...(Object.keys(env).length > 0 ? { env } : {}),
+          ...(url ? { url } : {}),
+          ...(transport ? { transport } : {}),
+          ...(description ? { description } : {})
+        }
+      ]
+    })
+  )
+}
+
+// Hooks are harness-neutral: each declares a lifecycle event from a fixed
+// vocabulary and a shell command. Renderers map the neutral event onto each
+// agent's native mechanism (for example Claude Code settings.json hook events)
+// or surface it advisorily where an agent has no native hook system.
+function normalizeHooks(hooks) {
+  if (hooks === undefined) {
+    return []
+  }
+
+  if (!Array.isArray(hooks)) {
+    throw new Error('Workflow hooks must be an array')
+  }
+
+  const seenHookIds = new Set()
+  return hooks.map((hook, index) => {
+    const label = `Workflow hooks[${index}]`
+    if (!isPlainObject(hook)) {
+      throw new Error(`${label} must be an object`)
+    }
+
+    assertKnownFields(hook, HOOK_FIELDS, label)
+    const id = requireNonEmptyString(hook.id, `${label} id`)
+    validateIdentifier(id, `Hook "${id}"`)
+    if (seenHookIds.has(id)) {
+      throw new Error(`Duplicate hook id "${id}"`)
+    }
+    seenHookIds.add(id)
+
+    const event = normalizeEnum(hook.event, HOOK_EVENTS, `Hook "${id}" event`)
+    const command = requireNonEmptyString(hook.command, `Hook "${id}" command`)
+    const matcher =
+      hook.matcher !== undefined
+        ? requireNonEmptyString(hook.matcher, `Hook "${id}" matcher`)
+        : ''
+    const description = optionalString(hook.description)
+
+    return {
+      id,
+      event,
+      command,
+      ...(matcher ? { matcher } : {}),
+      ...(description ? { description } : {})
+    }
   })
 }
 
@@ -173,6 +301,27 @@ export function compileWorkflow(input) {
     content: renderOpenCodeAgentMarkdown(roleId, role, workflow)
   }))
 
+  const mcpOutputs = workflowHasMcpServers(workflow)
+    ? [
+        {
+          path: '.mcp.json',
+          content: renderMcpJson(workflow)
+        }
+      ]
+    : []
+  const hooksOutputs = workflowHasHooks(workflow)
+    ? [
+        {
+          path: '.claude/settings.json',
+          content: renderClaudeSettings(workflow)
+        },
+        {
+          path: '.tpan-opt-co-worker/hooks.json',
+          content: renderHooksManifest(workflow)
+        }
+      ]
+    : []
+
   return [
     {
       path: 'AGENTS.md',
@@ -197,6 +346,8 @@ export function compileWorkflow(input) {
       path: 'opencode.json',
       content: renderOpenCodeConfig()
     },
+    ...mcpOutputs,
+    ...hooksOutputs,
     {
       path: '.github/pull_request_template.md',
       content: renderPullRequestTemplate(workflow)
@@ -294,7 +445,7 @@ function renderEmptyOrchestrationData() {
   return `${JSON.stringify(EMPTY_ORCHESTRATION, null, 2)}\n`
 }
 
-function normalizeRoles(roles) {
+function normalizeRoles(roles, serverNames) {
   if (!isPlainObject(roles) || Object.keys(roles).length === 0) {
     throw new Error('Workflow roles must be a non-empty object')
   }
@@ -307,6 +458,7 @@ function normalizeRoles(roles) {
       }
 
       assertKnownFields(role, ROLE_FIELDS, `Role "${roleId}"`)
+      const mcpServers = normalizeRoleMcpServers(role.mcpServers, roleId, serverNames)
       return [
         roleId,
         {
@@ -315,11 +467,33 @@ function normalizeRoles(roles) {
               ? role.description.trim()
               : `Workflow role: ${roleId}`,
           skills: normalizeStringArray(role.skills, `Role "${roleId}" skills`),
-          permissions: normalizeStringArray(role.permissions, `Role "${roleId}" permissions`)
+          permissions: normalizeStringArray(role.permissions, `Role "${roleId}" permissions`),
+          ...(mcpServers.length > 0 ? { mcpServers } : {})
         }
       ]
     })
   )
+}
+
+function normalizeRoleMcpServers(value, roleId, serverNames) {
+  const names = normalizeStringArray(value, `Role "${roleId}" mcpServers`, {
+    optional: true
+  })
+
+  const seen = new Set()
+  for (const name of names) {
+    if (!serverNames.has(name)) {
+      throw new Error(
+        `Role "${roleId}" mcpServers references unknown MCP server "${name}"`
+      )
+    }
+    if (seen.has(name)) {
+      throw new Error(`Role "${roleId}" mcpServers lists "${name}" more than once`)
+    }
+    seen.add(name)
+  }
+
+  return names
 }
 
 function normalizeStages(stages, roles, gatePresetRegistry) {
@@ -413,119 +587,6 @@ function normalizeStageDependencies(dependsOn, { stageId, knownStageIds, previou
   return ids
 }
 
-function renderAgentsMarkdown(workflow) {
-  const organizationSection = renderOrganizationMarkdown(workflow.organization)
-  const roleSections = Object.entries(workflow.roles)
-    .map(
-      ([roleId, role]) => `### ${roleId}
-
-${role.description}
-
-- Skills: ${formatInlineList(role.skills)}
-- Permissions: ${formatInlineList(role.permissions)}`
-    )
-    .join('\n\n')
-
-  const stageSections = workflow.stages
-    .map(
-      (stage, index) => `### ${index + 1}. ${stage.id}
-
-- Owner: \`${stage.owner}\`
-- Output: ${stage.output ? `\`${stage.output}\`` : 'none'}
-- Required work: ${formatInlineList(stage.required)}
-- Gates: ${formatGateList(stage.gates)}`
-    )
-    .join('\n\n')
-
-  return `# ${workflow.name} Agent Instructions
-
-This file was generated by TPAN-OPT/CO-WORKER from workflow version \`${workflow.version}\`.
-
-## Operating Rules
-
-- Follow the workflow stages in order unless a human lead explicitly approves a deviation.
-- Do not proceed past a gate without verification evidence.
-- Keep role boundaries clear: each role should only use the permissions granted below.
-- Human approval is required for external writes, credential changes, paid actions, destructive operations, and releases.
-- Record durable artifacts for plans, implementation notes, reviews, verification results, and approvals.
-
-${organizationSection}
-## Roles
-
-${roleSections}
-
-## Workflow Stages
-
-${stageSections}
-`
-}
-
-function renderCodexConfig(workflow) {
-  const agentSections = Object.entries(workflow.roles)
-    .map(
-      ([roleId, role]) => `[agents.${roleId}]
-description = ${tomlString(role.description)}
-config = ${tomlString(`.codex/agents/${roleId}.toml`)}
-`
-    )
-    .join('\n')
-
-  return `[features]
-multi_agent = true
-
-${agentSections}`
-}
-
-function renderAgentToml(roleId, role, workflow) {
-  const ownedStages = workflow.stages
-    .filter((stage) => stage.owner === roleId)
-    .map((stage) => stage.id)
-
-  return `name = ${tomlString(roleId)}
-description = ${tomlString(role.description)}
-skills = ${tomlArray(role.skills)}
-permissions = ${tomlArray(role.permissions)}
-owned_stages = ${tomlArray(ownedStages)}
-
-[instructions]
-summary = ${tomlString(
-    `Act as ${roleId} for the ${workflow.name} workflow.${renderOrganizationInline(workflow.organization)} Produce required artifacts and stop when gates need human or reviewer evidence.`
-  )}
-`
-}
-
-function renderPullRequestTemplate(workflow) {
-  const gateItems = workflow.stages
-    .flatMap((stage) =>
-      stage.gates.map(
-        (gate) =>
-          `- [ ] \`${stage.id}\`: ${gate.id} (${gate.type})${gate.command ? ` - \`${gate.command}\`` : ''}`
-      )
-    )
-    .join('\n')
-
-  return `## Summary
-
-<!-- Describe the change and the workflow stage completed. -->
-
-## Workflow
-
-- Workflow: \`${workflow.name}\`
-- Version: \`${workflow.version}\`
-
-## Verification Gates
-
-${gateItems || '- [ ] No workflow gates configured.'}
-
-## Evidence
-
-<!-- Link tests, screenshots, logs, reviews, approvals, and generated artifacts. -->
-
-## Risk Notes
-
-<!-- Call out security, migration, data, release, or rollback concerns. -->
-`
-}
 
 function normalizeGates(value, label, gatePresetRegistry, options = {}) {
   if (value === undefined && options.optional) {
@@ -642,35 +703,45 @@ function requireNonEmptyString(value, label) {
   return value.trim()
 }
 
+function normalizeEnvObject(value, label) {
+  if (value === undefined) {
+    return {}
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error(`${label} must be an object`)
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      if (typeof key !== 'string' || key.trim() === '') {
+        throw new Error(`${label} keys must be non-empty strings`)
+      }
+      if (typeof item !== 'string') {
+        throw new Error(`${label} value for "${key}" must be a string`)
+      }
+
+      return [key, item]
+    })
+  )
+}
+
+function normalizeEnum(value, allowed, label) {
+  if (typeof value !== 'string' || !allowed.includes(value)) {
+    throw new Error(`${label} must be one of ${allowed.join(', ')}`)
+  }
+
+  return value
+}
+
+function optionalString(value) {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : ''
+}
+
 function validateIdentifier(value, label) {
   if (!IDENTIFIER_PATTERN.test(value)) {
     throw new Error(`${label} must use letters, numbers, underscores, or hyphens`)
   }
-}
-
-function formatInlineList(items) {
-  return items.length === 0 ? 'none' : items.map((item) => `\`${item}\``).join(', ')
-}
-
-function formatGateList(gates) {
-  if (gates.length === 0) {
-    return 'none'
-  }
-
-  return gates
-    .map((gate) => {
-      const command = gate.command ? `: \`${gate.command}\`` : ''
-      return `\`${gate.id}\` (${gate.type})${command}`
-    })
-    .join(', ')
-}
-
-function tomlArray(items) {
-  return `[${items.map((item) => tomlString(item)).join(', ')}]`
-}
-
-function tomlString(value) {
-  return JSON.stringify(value)
 }
 
 function isPlainObject(value) {

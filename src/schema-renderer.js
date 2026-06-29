@@ -33,6 +33,14 @@ export function renderWorkflowSchema() {
           policies: stringArray()
         }
       },
+      mcpServers: {
+        type: 'object',
+        description:
+          'MCP servers available to the workflow, keyed by server id. Reference them from roles via mcpServers.',
+        additionalProperties: {
+          $ref: '#/$defs/mcpServer'
+        }
+      },
       gatePresets: {
         type: 'object',
         additionalProperties: {
@@ -52,6 +60,14 @@ export function renderWorkflowSchema() {
         items: {
           $ref: '#/$defs/stage',
           required: ['id', 'owner']
+        }
+      },
+      hooks: {
+        type: 'array',
+        description:
+          'Harness-neutral lifecycle hooks compiled into each agent harness (for example Claude Code settings.json hook events).',
+        items: {
+          $ref: '#/$defs/hook'
         }
       },
       orchestration: {
@@ -80,7 +96,58 @@ export function renderWorkflowSchema() {
             type: 'string'
           },
           skills: stringArray(),
-          permissions: stringArray()
+          permissions: stringArray(),
+          mcpServers: {
+            ...stringArray(),
+            description: 'MCP server ids (declared in the top-level mcpServers map) this role may use.'
+          }
+        }
+      },
+      mcpServer: {
+        type: 'object',
+        additionalProperties: false,
+        oneOf: [
+          {
+            required: ['command']
+          },
+          {
+            required: ['url']
+          }
+        ],
+        properties: {
+          command: nonEmptyString('Executable for a local (stdio) MCP server.'),
+          args: stringArray(),
+          env: {
+            type: 'object',
+            additionalProperties: {
+              type: 'string'
+            }
+          },
+          url: nonEmptyString('Endpoint for a remote (sse/http) MCP server.'),
+          transport: {
+            type: 'string',
+            enum: ['stdio', 'sse', 'http']
+          },
+          description: {
+            type: 'string'
+          }
+        }
+      },
+      hook: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'event', 'command'],
+        properties: {
+          id: identifier('Hook id.'),
+          event: {
+            type: 'string',
+            enum: ['pre-tool', 'post-tool', 'stop', 'user-prompt-submit', 'session-start']
+          },
+          command: nonEmptyString('Shell command to run for the hook.'),
+          matcher: nonEmptyString('Tool matcher (applies to pre-tool/post-tool events).'),
+          description: {
+            type: 'string'
+          }
         }
       },
       stage: {

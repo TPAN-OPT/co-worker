@@ -14,6 +14,7 @@ import {
 import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { runInit, runQuickstart } from './init-commands.js'
+import { runWizard } from './wizard-commands.js'
 import { runMcpServer } from './mcp-server.js'
 import { runApprove, runNext, runStatus } from './ops-commands.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
@@ -78,6 +79,11 @@ async function main(argv) {
 
   if (command === 'quickstart') {
     await runQuickstart(argv.slice(3))
+    return
+  }
+
+  if (command === 'wizard') {
+    await runWizard({ argv: argv.slice(3) })
     return
   }
 
@@ -431,6 +437,7 @@ function printHelp() {
 
 Usage:
   tpan-opt-co-worker quickstart --out . [--template minimal] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--force]
+  tpan-opt-co-worker wizard --out . [--force]
   tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
   tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
   tpan-opt-co-worker catalog [--json]
@@ -448,6 +455,7 @@ Usage:
 
 Commands:
   quickstart Scaffold, compile, and seed a demo run so the console works immediately.
+  wizard     Interactively configure a workflow (template, team, policies, MCP servers, hooks) and compile it.
   status     Show the compiled workflow and per-stage orchestration status.
   next       Show the open work order(s) and the next action.
   approve    Approve a manual gate (record evidence) and advance the orchestrator.
