@@ -442,7 +442,7 @@ function printHelp() {
   console.log(`TPAN-OPT/CO-WORKER
 
 Usage:
-  tpan-opt-co-worker quickstart --out . [--template minimal] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--force]
+  tpan-opt-co-worker quickstart --out . [--template opt-demo] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--force]
   tpan-opt-co-worker wizard --out . [--force]
   tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
   tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]

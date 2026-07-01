@@ -38,6 +38,7 @@
     "build": "node scripts/build-smoke.mjs",
     "lint": "node scripts/check-js.mjs",
     "pack:check": "node scripts/pack-smoke.mjs",
+    "prepublishOnly": "node --test && node scripts/pack-smoke.mjs",
     "repo:health": "node scripts/repo-health.mjs",
     "test": "node --test",
     "test:coverage": "node scripts/check-coverage.mjs",

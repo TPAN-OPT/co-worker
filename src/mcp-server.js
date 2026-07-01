@@ -32,7 +32,7 @@ const TOOLS = [
         name: { type: 'string', description: 'Workflow name. Optional.' },
         template: {
           type: 'string',
-          enum: ['minimal', 'production-feature'],
+          enum: ['opt-demo', 'production-feature', 'minimal'],
           description: 'Workflow template. Defaults to opt-demo (runnable agent team).'
         },
         demo: {
