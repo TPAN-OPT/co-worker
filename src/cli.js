@@ -442,7 +442,7 @@ function printHelp() {
   console.log(`TPAN-OPT/CO-WORKER
 
 Usage:
-  tpan-opt-co-worker quickstart --out . [--template minimal] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--force]
+  tpan-opt-co-worker quickstart --out . [--template opt-demo] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--force]
   tpan-opt-co-worker wizard --out . [--force]
   tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
   tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
@@ -454,8 +454,8 @@ Usage:
   tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
   tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
   tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
-  tpan-opt-co-worker status [--out .]
-  tpan-opt-co-worker next [--out .]
+  tpan-opt-co-worker status [--out .] [--run-id <id>]
+  tpan-opt-co-worker next [--out .] [--run-id <id>]
   tpan-opt-co-worker dashboard [--out .]
   tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
   tpan-opt-co-worker mcp

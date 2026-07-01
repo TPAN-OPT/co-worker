@@ -1,9 +1,10 @@
 import { access } from 'node:fs/promises'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
+import { renderDemoAgentScript } from './demo-agent-template.js'
 import {
   getReusableAgentTeam,
   listReusableAgentTeams
@@ -101,7 +102,7 @@ export async function runQuickstart(args) {
   const result = await quickstartProject(options)
   console.log(`Wrote workflow template ${result.template}: ${result.workflowPath}`)
   console.log(`Compiled ${result.assetCount} harness assets into ${result.targetDir}`)
-  printQuickstartNextSteps(result.targetDir, result.demo)
+  printQuickstartNextSteps(result.targetDir, result.demo, options.open)
 }
 
 // Runs the quickstart pipeline (scaffold + compile + optional demo) and returns
@@ -128,6 +129,7 @@ export async function quickstartProject(options) {
   })
 
   await scaffoldPackageJson(workflow, targetDir)
+  await writeDemoAgent(targetDir)
 
   const demo = options.demo ? await runQuickstartDemo(workflow, targetDir, options.runId) : null
 
@@ -140,12 +142,67 @@ export async function quickstartProject(options) {
   }
 }
 
-// Seed a demo orchestration run by approving the first stage's manual gates and
-// invoking the generated orchestrator. Exit code 1 just means a later stage is
-// still blocked, which is the expected, realistic demo state, so only a spawn
-// error (for example node missing from PATH) downgrades to a skip.
+// The quickstart workflow's stages gate on a bundled offline demo agent so a
+// fresh repo can run the whole team end to end with no agent CLI or network.
+// Written for every quickstart (even --no-demo) so the persisted
+// orchestration.agentCommand is runnable immediately.
+async function writeDemoAgent(targetDir) {
+  await writeCompiledOutputs(
+    [{ path: 'scripts/demo-agent.mjs', content: renderDemoAgentScript() }],
+    targetDir,
+    { force: true }
+  )
+}
+
+// Seed the console with a demo run. The opt-demo template persists an agent
+// command, so it gets the headline flow: drive every owner agent end to end.
+// Templates without a persisted agent command (minimal, production-feature) fall
+// back to the lighter manual-seed demo so they still populate the console.
 async function runQuickstartDemo(workflow, targetDir, runId) {
   const normalized = validateWorkflow(workflow)
+  if (workflow.orchestration && workflow.orchestration.agentCommand) {
+    return runInvokeDemo(normalized, targetDir, runId)
+  }
+  return runManualSeedDemo(normalized, targetDir, runId)
+}
+
+// Drive a real orchestration run with --invoke so the bundled demo agent does
+// each stage's work and the console shows a populated, multi-role run. The owner
+// agent is invoked for clarify -> implement -> review -> ship; each writes its
+// artifact, turning the stage's command gate green, so the run cascades and
+// stops at the single human-approval gate. Exit code 1 just means that human
+// gate is (correctly) still open, so only a spawn error downgrades to a skip.
+// The run id matches `approve`'s default ("local") so finishing is one command.
+async function runInvokeDemo(normalized, targetDir, runId) {
+  const finalStage = normalized.stages[normalized.stages.length - 1]
+  const manualGate = (finalStage.gates || []).find((gate) => gate.type === 'manual')
+  const scriptPath = resolve(targetDir, 'scripts', 'orchestrate-workflow.mjs')
+  const result = spawnSync(
+    process.execPath,
+    [scriptPath, '--run-id', runId, '--invoke'],
+    { cwd: targetDir, encoding: 'utf8' }
+  )
+
+  if (result.error) {
+    console.log(
+      `Skipped demo orchestration (${result.error.message}). Run it yourself: node scripts/orchestrate-workflow.mjs --run-id ${runId} --invoke`
+    )
+    return { ran: false, runId }
+  }
+
+  return {
+    ran: true,
+    drove: true,
+    runId,
+    approveStage: finalStage.id,
+    approveGate: manualGate ? manualGate.id : ''
+  }
+}
+
+// Fallback demo for templates that do not persist an agent command: pre-approve
+// the first stage's manual gates and run the orchestrator (no --invoke) so the
+// console shows the first stage done and the next as an open work order.
+async function runManualSeedDemo(normalized, targetDir, runId) {
   const firstStage = normalized.stages[0]
   const gates = {}
   for (const gate of firstStage.gates) {
@@ -159,12 +216,7 @@ async function runQuickstartDemo(workflow, targetDir, runId) {
 
   const evidenceRelativePath = '.tpan-opt-co-worker/demo/manual-evidence.json'
   await writeCompiledOutputs(
-    [
-      {
-        path: evidenceRelativePath,
-        content: `${JSON.stringify({ gates }, null, 2)}\n`
-      }
-    ],
+    [{ path: evidenceRelativePath, content: `${JSON.stringify({ gates }, null, 2)}\n` }],
     targetDir,
     { force: true }
   )
@@ -184,23 +236,75 @@ async function runQuickstartDemo(workflow, targetDir, runId) {
     return { ran: false, runId }
   }
 
-  return { ran: true, runId }
+  return { ran: true, drove: false, runId }
 }
 
-function printQuickstartNextSteps(targetDir, demo) {
+function printQuickstartNextSteps(targetDir, demo, open) {
   const consolePath = resolve(targetDir, '.tpan-opt-co-worker', 'console', 'index.html')
+  const artifactsPath = resolve(targetDir, '.tpan-opt-co-worker', 'demo', 'artifacts')
 
   console.log('')
   console.log('Quickstart ready.')
-  if (demo && demo.ran) {
+  if (demo && demo.ran && demo.drove) {
+    console.log(
+      `Your agent team just ran end to end: planner -> engineer -> reviewer -> lead each did their stage and produced an artifact (run "${demo.runId}").`
+    )
+    console.log(`See what they wrote: ${artifactsPath}`)
+  } else if (demo && demo.ran) {
     console.log(`Seeded a demo orchestration run "${demo.runId}" so the console shows live stage progress.`)
   }
+
+  const opened = open ? openInBrowser(consolePath) : false
   console.log('')
-  console.log('Next steps:')
-  console.log(`  1. Open the console in a browser: ${consolePath}`)
-  console.log('  2. Edit the workflow in the console Designer (or opt.workflow.json), then re-apply:')
-  console.log('       tpan-opt-co-worker compile --workflow opt.workflow.json --out . --force')
-  console.log('  3. Drive stages and approvals: node scripts/orchestrate-workflow.mjs --run-id local --manual-evidence manual-evidence.json')
+  if (opened) {
+    console.log(`Opened the console: ${consolePath}`)
+  } else {
+    console.log(`Open the console in a browser: ${consolePath}`)
+  }
+
+  console.log('')
+  if (demo && demo.ran && demo.approveGate) {
+    const stageFlag = demo.approveStage ? ` --stage ${demo.approveStage}` : ''
+    console.log('Everything the agents could do is done — one human approval is left. Approve to finish:')
+    console.log(`  tpan-opt-co-worker approve ${demo.approveGate}${stageFlag} --by you`)
+  } else {
+    console.log('Drive the workflow yourself: node scripts/orchestrate-workflow.mjs --run-id local --invoke')
+  }
+  console.log('')
+  console.log('Run the same flow with a REAL agent (swaps the bundled demo agent):')
+  console.log('  node scripts/orchestrate-workflow.mjs --run-id real --invoke --loop \\')
+  console.log("    --agent-command 'claude -p \"You are the {role}. Do stage {stage} from brief {brief}. Write your result to .tpan-opt-co-worker/artifacts/{stage}.md\"'")
+  console.log('  (swap `claude -p` for `codex exec`, `cursor-agent`, … — any agent CLI works.)')
+  console.log('  Then approve: tpan-opt-co-worker approve human_approval --stage ship --by you --run-id real')
+  console.log('')
+  console.log('Then make it yours: edit opt.workflow.json (or the console Designer) and re-apply:')
+  console.log('  tpan-opt-co-worker compile --workflow opt.workflow.json --out . --force')
+}
+
+// Best-effort: open the generated console in the default browser, but only when
+// running interactively (a TTY, not CI). In tests and automation stdout is not a
+// TTY, so this stays a no-op and we just print the path. Never throws.
+function openInBrowser(targetPath) {
+  if (!process.stdout.isTTY || process.env.CI) {
+    return false
+  }
+
+  const opener =
+    process.platform === 'darwin'
+      ? 'open'
+      : process.platform === 'win32'
+        ? 'cmd'
+        : 'xdg-open'
+  const openerArgs = process.platform === 'win32' ? ['/c', 'start', '', targetPath] : [targetPath]
+
+  try {
+    const child = spawn(opener, openerArgs, { stdio: 'ignore', detached: true })
+    child.on('error', () => {})
+    child.unref()
+    return true
+  } catch {
+    return false
+  }
 }
 
 // Injects a dedicated policy_compliance stage that enforces the automatable
@@ -411,13 +515,14 @@ function parseQuickstartArgs(args) {
   const options = {
     out: '.',
     name: '',
-    template: 'minimal',
+    template: 'opt-demo',
     templateSpecified: false,
     team: '',
     policyIds: [],
     force: false,
     demo: true,
-    runId: 'demo'
+    open: true,
+    runId: 'local'
   }
 
   for (let index = 0; index < args.length; index += 1) {
@@ -473,6 +578,11 @@ function parseQuickstartArgs(args) {
       continue
     }
 
+    if (arg === '--no-open') {
+      options.open = false
+      continue
+    }
+
     if (arg === '--help' || arg === '-h') {
       printQuickstartHelp()
       process.exit(0)
@@ -501,20 +611,21 @@ export function printQuickstartHelp() {
   const defaultTeam = listReusableAgentTeams()[0].id
 
   console.log(`Usage:
-  tpan-opt-co-worker quickstart --out . [--template minimal] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--force]
+  tpan-opt-co-worker quickstart --out . [--template opt-demo] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--no-open] [--force]
 
-Scaffold opt.workflow.json, compile every harness asset, and (by default) run a
-demo orchestration with the first stage pre-approved so the generated console
-shows live stage progress the moment you open it.
+Scaffold opt.workflow.json, compile every harness asset, bundle an offline demo
+agent, and (by default) run the four-role team end to end with --invoke so the
+console shows a real, populated run that stops at a single human approval.
 
 Options:
   --out <dir>       Output repository directory. Defaults to current directory.
-  --template <id>   Workflow template id. Defaults to minimal (zero external gates).
+  --template <id>   Workflow template id. Defaults to opt-demo (runnable agent team).
   --team <id>       Reusable agent team id. Uses the team's recommended template unless --template is set.
   --policy <id>     Organization policy pack id. Can be repeated.
   --name <id>       Workflow name. Defaults to the selected template's default name.
-  --run-id <id>     Demo orchestration run id. Defaults to demo.
+  --run-id <id>     Demo orchestration run id. Defaults to local (so \`approve\` finishes it).
   --no-demo         Scaffold and compile only; do not run the demo orchestration.
+  --no-open         Do not open the console in a browser when finishing.
   --force           Overwrite existing files in the output directory.
 `)
 }

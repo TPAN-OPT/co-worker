@@ -1,5 +1,12 @@
 const PRODUCTION_FEATURE_TEMPLATE_ID = 'production-feature'
 const MINIMAL_TEMPLATE_ID = 'minimal'
+const OPT_DEMO_TEMPLATE_ID = 'opt-demo'
+
+// The bundled demo agent the opt-demo template drives at every stage. The
+// orchestrator substitutes {stage}/{role}/{brief}; quickstart writes the script
+// referenced here into scripts/demo-agent.mjs so --invoke works with zero setup.
+const DEMO_AGENT_COMMAND =
+  'node scripts/demo-agent.mjs --stage {stage} --role {role} --brief {brief}'
 
 const WORKFLOW_TEMPLATE_CATALOG = [
   {
@@ -8,6 +15,13 @@ const WORKFLOW_TEMPLATE_CATALOG = [
     description:
       'Planner, engineer, reviewer, and release manager workflow for verified product delivery.',
     defaultWorkflowName: 'production-feature-workflow'
+  },
+  {
+    id: OPT_DEMO_TEMPLATE_ID,
+    name: 'OPT Demo Team Workflow',
+    description:
+      'Runnable four-role agent team (planner, engineer, reviewer, lead) driven end to end by the bundled demo agent; ends at one human approval.',
+    defaultWorkflowName: 'opt-demo-workflow'
   },
   {
     id: MINIMAL_TEMPLATE_ID,
@@ -25,6 +39,10 @@ export function listWorkflowTemplates() {
 export function createWorkflowFromTemplate(templateId, options = {}) {
   if (templateId === PRODUCTION_FEATURE_TEMPLATE_ID) {
     return createOptWorkflowTemplate(options)
+  }
+
+  if (templateId === OPT_DEMO_TEMPLATE_ID) {
+    return createOptDemoWorkflowTemplate(options)
   }
 
   if (templateId === MINIMAL_TEMPLATE_ID) {
@@ -142,6 +160,85 @@ export function createOptWorkflowTemplate(options = {}) {
             id: 'human_approval',
             type: 'manual',
             description: 'A human lead approved release or external publication.'
+          }
+        ]
+      }
+    ]
+  }
+}
+
+// A fully runnable four-role team workflow used by `quickstart`. Every non-final
+// stage gates on a command that the bundled demo agent satisfies by writing its
+// artifact, so the orchestrator invokes each owner agent in turn and the run
+// cascades planner -> engineer -> reviewer -> lead, stopping at a single human
+// approval. The persisted orchestration.agentCommand means `--invoke` drives the
+// demo agent with no flags, and the whole run is reproducible by re-running it.
+export function createOptDemoWorkflowTemplate(options = {}) {
+  const workflowName = options.name || 'opt-demo-workflow'
+  const organization = normalizeOrganizationOption(options.organization)
+  const checkGate = (id, stageId, description) => ({
+    id,
+    type: 'command',
+    command: `node scripts/demo-agent.mjs --check ${stageId}`,
+    description
+  })
+
+  return {
+    name: workflowName,
+    version: '1.0.0',
+    ...(organization ? { organization } : {}),
+    orchestration: { agentCommand: DEMO_AGENT_COMMAND },
+    roles: {
+      planner: {
+        description: 'Clarifies scope, non-goals, and the definition of done before work starts.',
+        skills: ['product-capability'],
+        permissions: ['read_repo', 'write_docs']
+      },
+      engineer: {
+        description: 'Implements the clarified capability with a covering check.',
+        skills: ['tdd-workflow', 'coding-standards'],
+        permissions: ['read_repo', 'write_code', 'run_tests']
+      },
+      reviewer: {
+        description: 'Reviews correctness, security, and maintainability of the change.',
+        skills: ['code-review', 'security-review'],
+        permissions: ['read_diff', 'comment']
+      },
+      lead: {
+        description: 'Assembles the release packet and asks for the final human approval.',
+        skills: ['verification-loop'],
+        permissions: ['read_repo', 'write_docs']
+      }
+    },
+    stages: [
+      {
+        id: 'clarify',
+        owner: 'planner',
+        output: 'capability_spec',
+        gates: [checkGate('scope_documented', 'clarify', 'Planner agent documented scope and non-goals.')]
+      },
+      {
+        id: 'implement',
+        owner: 'engineer',
+        output: 'code_patch',
+        gates: [checkGate('change_implemented', 'implement', 'Engineer agent implemented the capability with a check.')]
+      },
+      {
+        id: 'review',
+        owner: 'reviewer',
+        output: 'review_report',
+        gates: [checkGate('review_passed', 'review', 'Reviewer agent recorded an approve verdict.')]
+      },
+      {
+        id: 'ship',
+        owner: 'lead',
+        output: 'release_packet',
+        gates: [
+          checkGate('release_packet_ready', 'ship', 'Lead agent assembled the release packet.'),
+          {
+            id: 'human_approval',
+            type: 'manual',
+            description: 'A human lead approved the result before release.'
           }
         ]
       }

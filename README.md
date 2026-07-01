@@ -49,41 +49,49 @@ co-worker ships a zero-dependency MCP server that exposes the whole flow as call
 /plugin install tpan-opt-co-worker@tpan-opt-co-worker
 ```
 
-This clones the repo and registers the `co-worker` MCP server automatically (via `.mcp.json`) — no npm install, no manual config. Now just talk to your agent; the complete loop is five turns:
+This clones the repo and registers the `co-worker` MCP server automatically (via `.mcp.json`) — no npm install, no manual config. Now just talk to your agent; the whole point — one lead running a team of agents through a governed process — shows up in three turns:
 
-1. **Scaffold** — "Use `co_worker_quickstart` to set up a workflow in `./my-repo`." It scaffolds `opt.workflow.json`, compiles every harness asset, seeds a demo run, and prints the console path.
-2. **See it** — open the printed `./my-repo/.tpan-opt-co-worker/console/index.html`. The console is already populated — first stage `done`, next stage an open work order.
-3. **Next** — "Call `co_worker_next` for `./my-repo`." It returns the open work order(s) and the next action.
-4. **Approve** — "Call `co_worker_approve` for gate `scope_confirmed` in stage `plan`, approved by me, on `./my-repo`." It records the approval as evidence, advances the orchestrator, and prints the next work order.
-5. **Repeat** — keep asking for `co_worker_next` → `co_worker_approve` until every stage is `done`.
+1. **Scaffold and run the team** — "Use `co_worker_quickstart` to set up a workflow in `./my-repo`." It scaffolds `opt.workflow.json`, compiles every harness asset, and drives a real four-role agent team (planner → engineer → reviewer → lead) end to end with a bundled offline demo agent. Each agent does its stage and writes an artifact; the run stops at a single human-approval gate.
+2. **See what the team did** — open the printed `./my-repo/.tpan-opt-co-worker/console/index.html`. The console shows every stage `done`, the populated agent-invocation log, and one open work order: your approval. The artifacts the agents wrote are under `./my-repo/.tpan-opt-co-worker/demo/artifacts/`.
+3. **Approve to ship** — "Call `co_worker_approve` for gate `human_approval` in stage `ship`, approved by me, on `./my-repo`." It records your approval as evidence, advances the orchestrator, and the run is `done`.
 
-**Codex / Cursor / other MCP agents** — clone the repo, then point the agent at the local server. See [Install as a plugin (MCP)](#install-as-a-plugin-mcp) for the exact `config.toml` / JSON, then ask the agent to run the same `co_worker_quickstart` → `co_worker_next` → `co_worker_approve` chain.
+That is the OPT loop in miniature: agents do the work, a human approves the gate that matters.
+
+**Run the same flow with a real agent.** The quickstart's stage gates are agent-neutral — each passes once that stage's artifact exists at `.tpan-opt-co-worker/artifacts/<stage>.md`, no matter who wrote it. So point the orchestrator at a real agent CLI and tell it to write there; the same four stages cascade and still stop at the one human gate:
+
+```bash
+node scripts/orchestrate-workflow.mjs --run-id real --invoke --loop \
+  --agent-command 'claude -p "You are the {role}. Do stage {stage} from brief {brief}. Write your result to .tpan-opt-co-worker/artifacts/{stage}.md"'
+tpan-opt-co-worker approve human_approval --stage ship --by you --run-id real
+```
+
+Swap `claude -p` for `codex exec`, `cursor-agent`, or any agent CLI — the orchestrator substitutes `{stage}` / `{role}` / `{brief}` / `{skills}` / `{mcpServers}` / `{hooks}` and runs it once per ready stage. Commit the command into the workflow under `orchestration.agentCommand` (the `wizard` prompts for it) so `--invoke` needs no flags on later runs.
+
+**Codex / Cursor / other MCP agents** — clone the repo, then point the agent at the local server. See [Install as a plugin (MCP)](#install-as-a-plugin-mcp) for the exact `config.toml` / JSON, then ask the agent to run the same `co_worker_quickstart` → `co_worker_approve` chain.
 
 ### Option B — Use the CLI directly
 
-The quick start is a single command — from an empty directory to a working, populated console:
+The quick start is a single command — from an empty directory to a real agent-team run:
 
 ```bash
 node src/cli.js quickstart --out /path/to/target-repo --name my-workflow
 ```
 
-It scaffolds `opt.workflow.json`, compiles every harness asset, and runs a demo orchestration with the first stage pre-approved. Open the path it prints:
+It scaffolds `opt.workflow.json`, compiles every harness asset, bundles an offline demo agent, and drives a four-role team (planner → engineer → reviewer → lead) end to end: each agent does its stage and writes an artifact, and the run stops at one human-approval gate. It opens the console for you (use `--no-open` to skip), or open the path it prints:
 
 ```bash
 open /path/to/target-repo/.tpan-opt-co-worker/console/index.html
 ```
 
-The console opens already populated — the first stage `done` and the next as an open work order — so you see the system working before learning any other command. Add `--no-demo` to skip the demo run, or `--template production-feature` for the fuller delivery workflow.
+The console shows every stage `done`, the populated agent-invocation log, and one open work order — your approval — so you see a team of agents actually deliver work before learning any other command. The artifacts they wrote are under `.tpan-opt-co-worker/demo/artifacts/`. Add `--no-demo` to scaffold without running the team, or `--template production-feature` for a delivery workflow with real check gates. The command also prints a ready-to-paste line for re-running the same flow with a real agent CLI instead of the bundled demo agent.
 
-Now drive the workflow from the CLI. These three commands are the whole daily loop — see where you are, get the next work order, approve a gate to advance — with no hand-edited evidence files (they share their core with the `co_worker_*` MCP tools above, so the CLI and in-agent flows behave identically):
+Everything the agents could do is done; one human approval is left. Finish it with a single command (the same core as the `co_worker_approve` MCP tool, so CLI and in-agent flows behave identically):
 
 ```bash
-node src/cli.js status   --out /path/to/target-repo   # where each stage stands
-node src/cli.js next     --out /path/to/target-repo   # the open work order(s) + next action
-node src/cli.js approve scope_confirmed --stage plan --by you@example.com --out /path/to/target-repo
+node src/cli.js approve human_approval --stage ship --by you@example.com --out /path/to/target-repo
 ```
 
-`approve` records the approver as evidence, advances the orchestrator, and prints the next work order — so `next` → `approve` → `next` is the loop you repeat until every stage is `done`.
+`approve` records the approver as evidence and advances the orchestrator to `done`. To inspect a run at any time, `node src/cli.js status --out …` shows where each stage stands and `node src/cli.js next --out …` returns the open work order(s) and next action.
 
 To change the workflow, edit it in the console Designer (or `opt.workflow.json`) and re-apply:
 
@@ -608,7 +616,7 @@ GitHub Actions runs the same quality gates on `main` pushes and pull requests fo
 ## Current CLI
 
 ```text
-tpan-opt-co-worker quickstart --out . [--template minimal] [--team product-delivery] [--name my-workflow] [--no-demo] [--force]
+tpan-opt-co-worker quickstart --out . [--template opt-demo] [--team product-delivery] [--name my-workflow] [--no-demo] [--no-open] [--force]
 tpan-opt-co-worker wizard --out . [--force]
 tpan-opt-co-worker init --out . [--template production-feature] [--team product-delivery] [--policy quality-standard] [--name production-feature-workflow] [--force]
 tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
@@ -620,18 +628,18 @@ tpan-opt-co-worker policies [--json]
 tpan-opt-co-worker teams [--json]
 tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
 tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
-tpan-opt-co-worker status [--out .]
-tpan-opt-co-worker next [--out .]
+tpan-opt-co-worker status [--out .] [--run-id <id>]
+tpan-opt-co-worker next [--out .] [--run-id <id>]
 tpan-opt-co-worker dashboard [--out .]
 tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
 tpan-opt-co-worker mcp
 ```
 
-`status`, `next`, `dashboard`, and `approve` drive a compiled repository from the command line. `status` prints the workflow and each stage's orchestration status (and, in `team` mode, points to `PLAYBOOK.md`); `next` prints the open work order(s) and the next action; `dashboard` aggregates the latest verification run per product/module into one side-by-side table — the team-mode view where each teammate runs the whole pipeline on a different module (label a run with `node scripts/run-workflow.mjs --module <name>`); `approve <gate> --by <approver>` records approver evidence for a manual gate and advances the orchestrator — so you never hand-edit `manual-evidence.json`. Pass `--stage` when a gate id is reused across stages. These share their core with the MCP `co_worker_next` / `co_worker_approve` tools, so the CLI and in-agent flows behave identically. `mcp` runs the MCP server (see [Install as a plugin (MCP)](#install-as-a-plugin-mcp)).
+`status`, `next`, `dashboard`, and `approve` drive a compiled repository from the command line. `status` prints the workflow and each stage's orchestration status (and, in `team` mode, points to `PLAYBOOK.md`); `next` prints the open work order(s) and the next action; both default to the latest run and accept `--run-id <id>` to inspect a specific orchestration run (for example the `real` run from a real-agent invocation); `dashboard` aggregates the latest verification run per product/module into one side-by-side table — the team-mode view where each teammate runs the whole pipeline on a different module (label a run with `node scripts/run-workflow.mjs --module <name>`); `approve <gate> --by <approver>` records approver evidence for a manual gate and advances the orchestrator — so you never hand-edit `manual-evidence.json`. Pass `--stage` when a gate id is reused across stages. These share their core with the MCP `co_worker_next` / `co_worker_approve` tools, so the CLI and in-agent flows behave identically. `mcp` runs the MCP server (see [Install as a plugin (MCP)](#install-as-a-plugin-mcp)).
 
-`quickstart` is the one-command onboarding path: it runs the same scaffolding as `init`, then immediately compiles every harness asset and (unless `--no-demo`) runs a demo orchestration with the first stage pre-approved, so the generated console shows live stage progress the moment you open it. It defaults to the `minimal` template so it works in any empty directory with zero external gates. The CLI `compile` step remains the authoritative path for applying edited workflows.
+`quickstart` is the one-command onboarding path: it runs the same scaffolding as `init`, compiles every harness asset, bundles an offline demo agent, and (unless `--no-demo`) drives a four-role agent team end to end with `--invoke` so the generated console shows a real, populated run that stops at one human-approval gate. It defaults to the `opt-demo` template (a runnable agent team) and opens the console for you unless you pass `--no-open`. Finish the seeded run with `approve human_approval --stage ship --by you`. The CLI `compile` step remains the authoritative path for applying edited workflows.
 
-`wizard` is the interactive authoring path: it prompts for the template, optional reusable team, policy packs, MCP servers, per-role MCP assignments, and lifecycle hooks, then writes `opt.workflow.json` and compiles every harness asset (including `.mcp.json`, `.codex/config.toml` MCP wiring, and `.claude/settings.json` hooks) into `--out`. Press Enter to accept each `[default]`; answer prompts by number or id. See [Workflow nodes: MCP servers and hooks](#workflow-nodes-mcp-servers-and-hooks) for the schema it produces. It refuses to overwrite existing files unless `--force` is provided.
+`wizard` is the interactive authoring path: it prompts for the template, optional reusable team, policy packs, MCP servers, per-role MCP assignments, lifecycle hooks, and an optional orchestrator agent command (committed as `orchestration.agentCommand` so `orchestrate --invoke` drives each stage's owner agent with no flags), then writes `opt.workflow.json` and compiles every harness asset (including `.mcp.json`, `.codex/config.toml` MCP wiring, and `.claude/settings.json` hooks) into `--out`. Press Enter to accept each `[default]`; answer prompts by number or id. See [Workflow nodes: MCP servers and hooks](#workflow-nodes-mcp-servers-and-hooks) for the schema it produces. It refuses to overwrite existing files unless `--force` is provided.
 
 `init` writes a starter `opt.workflow.json` from a named workflow template. The default `production-feature` template includes planner, engineer, reviewer, and release-manager roles plus a production delivery flow. Passing `--team <id>` uses the reusable team's recommended template unless `--template` is also set, and records `organization.team` plus recommended policy ids in the generated workflow. Passing `--policy <id>` appends validated organization policy packs; repeated policies are deduplicated while preserving order. When a selected policy contributes an automatable rule (currently `dependency_audit` from `security-baseline`), `init` injects a dedicated `policy_compliance` stage with the matching command gate (for example `npm:audit-high`) ahead of the final stage, so the rule is enforced during verification rather than only documented. Non-automatable rules stay advisory prompt text in the generated instructions. It refuses to overwrite an existing workflow unless `--force` is provided.
 

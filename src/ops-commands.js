@@ -11,7 +11,23 @@ const ORCHESTRATION_REL = '.tpan-opt-co-worker/console/orchestration.json'
 const EVIDENCE_REL = '.tpan-opt-co-worker/manual-evidence.json'
 const RUNS_INDEX_REL = '.tpan-opt-co-worker/runs/index.json'
 
-export async function readOrchestrationState(out) {
+function runStatePath(runId) {
+  return `.tpan-opt-co-worker/orchestrations/${runId}/state.json`
+}
+
+// Without a run id, read the console mirror, which always reflects the latest
+// run (`data.current`). With a run id, read that specific run's state file
+// directly — its shape is the same state object the mirror stores under
+// `current`, so the renderers work unchanged.
+export async function readOrchestrationState(out, runId = '') {
+  if (runId) {
+    try {
+      return JSON.parse(await readFile(resolve(out, runStatePath(runId)), 'utf8'))
+    } catch {
+      return null
+    }
+  }
+
   try {
     const data = JSON.parse(await readFile(resolve(out, ORCHESTRATION_REL), 'utf8'))
     return data && typeof data === 'object' ? data.current : null
@@ -37,20 +53,21 @@ export function renderOrchestrationSummary(state) {
   return lines.join('\n')
 }
 
-export async function nextWorkOrder(out) {
-  const state = await readOrchestrationState(out)
+export async function nextWorkOrder(out, runId = '') {
+  const state = await readOrchestrationState(out, runId)
   if (!state) {
+    const scope = runId ? ` for run "${runId}"` : ''
     return {
       hasRun: false,
-      text: 'No orchestration run recorded yet. Run `tpan-opt-co-worker quickstart` or orchestrate first.'
+      text: `No orchestration run recorded yet${scope}. Run \`tpan-opt-co-worker quickstart\` or orchestrate first.`
     }
   }
   return { hasRun: true, state, text: renderOrchestrationSummary(state) }
 }
 
-export async function workflowStatus(out) {
+export async function workflowStatus(out, runId = '') {
   const manifest = await readManifest(out)
-  const state = await readOrchestrationState(out)
+  const state = await readOrchestrationState(out, runId)
   const stageStatus = {}
   if (state && Array.isArray(state.stages)) {
     for (const stage of state.stages) {
@@ -187,14 +204,14 @@ export async function approveGate({ out, gate, stage = '', approvedBy, note = ''
 }
 
 export async function runStatus(args) {
-  const options = parseOpsArgs(args, 'status')
-  const result = await workflowStatus(options.out)
+  const options = parseOpsArgs(args, 'status', { allowRunId: true })
+  const result = await workflowStatus(options.out, options.runId)
   console.log(result.text)
 }
 
 export async function runNext(args) {
-  const options = parseOpsArgs(args, 'next')
-  const result = await nextWorkOrder(options.out)
+  const options = parseOpsArgs(args, 'next', { allowRunId: true })
+  const result = await nextWorkOrder(options.out, options.runId)
   console.log(result.text)
 }
 
@@ -232,8 +249,8 @@ async function readEvidence(evidencePath) {
   return { gates: {} }
 }
 
-function parseOpsArgs(args, name) {
-  const options = { out: '.' }
+function parseOpsArgs(args, name, { allowRunId = false } = {}) {
+  const options = { out: '.', runId: '' }
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
@@ -244,8 +261,15 @@ function parseOpsArgs(args, name) {
       continue
     }
 
+    if (allowRunId && arg === '--run-id') {
+      options.runId = requireNextValue(args, index, '--run-id')
+      index += 1
+      continue
+    }
+
     if (arg === '--help' || arg === '-h') {
-      console.log(`Usage:\n  tpan-opt-co-worker ${name} [--out .]`)
+      const runIdUsage = allowRunId ? ' [--run-id <id>]' : ''
+      console.log(`Usage:\n  tpan-opt-co-worker ${name} [--out .]${runIdUsage}`)
       process.exit(0)
     }
 
