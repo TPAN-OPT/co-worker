@@ -3,7 +3,12 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import pkg from '../package.json' with { type: 'json' }
-import { compileWorkflow, validateWorkflow } from './compiler.js'
+import {
+  SELECTABLE_HARNESSES,
+  compileWorkflow,
+  parseHarnessSelection,
+  validateWorkflow
+} from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { quickstartProject } from './init-commands.js'
 import { approveGate, nextWorkOrder } from './ops-commands.js'
@@ -61,7 +66,13 @@ const TOOLS = [
       type: 'object',
       properties: {
         workflow: { type: 'string', description: 'Path to opt.workflow.json.' },
-        out: { type: 'string', description: 'Target repository directory.' }
+        out: { type: 'string', description: 'Target repository directory.' },
+        harness: {
+          type: 'array',
+          items: { type: 'string', enum: SELECTABLE_HARNESSES },
+          description:
+            'Only emit files for these harnesses. Core assets (manifest, schema, console, scripts, CI) are always written. Omit to emit every harness (opt mode) or just the team playbook (team mode).'
+        }
       },
       required: ['workflow', 'out']
     }
@@ -251,10 +262,23 @@ async function quickstartTool(args) {
 async function compileTool(args) {
   requireString(args.workflow, 'workflow')
   requireString(args.out, 'out')
+  const harnesses = resolveHarnessArg(args.harness)
   const workflow = JSON.parse(await readFile(resolve(args.workflow), 'utf8'))
-  const outputs = compileWorkflow(workflow)
+  const outputs = compileWorkflow(workflow, { harnesses })
   const result = await writeCompiledOutputs(outputs, resolve(args.out), { force: true })
   return textResult(`Compiled ${result.written.length} files into ${resolve(args.out)}.`)
+}
+
+// The MCP harness argument accepts an array of harness ids (matching the CLI's
+// --harness) or a single comma-separated string. Validate through the same
+// helper the CLI uses so an unknown harness fails loudly instead of silently
+// emitting only the core assets.
+function resolveHarnessArg(harness) {
+  if (harness === undefined || harness === null) {
+    return []
+  }
+  const entries = Array.isArray(harness) ? harness : [harness]
+  return entries.flatMap((entry) => parseHarnessSelection(String(entry)))
 }
 
 async function validateTool(args) {

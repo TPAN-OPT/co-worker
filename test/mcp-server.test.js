@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -66,6 +66,44 @@ describe('MCP server tools', () => {
     const result = await callTool('co_worker_catalog', {})
     assert.match(text(result), /Workflow templates:/)
     assert.match(text(result), /production-feature/)
+  })
+
+  it('compiles with a harness selection and rejects an unknown harness', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-mcp-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+
+    try {
+      await writeFile(
+        workflowPath,
+        JSON.stringify({
+          name: 'mcp-harness-workflow',
+          version: '1.0.0',
+          roles: { planner: { skills: ['x'], permissions: ['read_repo'] } },
+          stages: [{ id: 'clarify', owner: 'planner', gates: ['approved'] }]
+        })
+      )
+
+      const result = await callTool('co_worker_compile', {
+        workflow: workflowPath,
+        out: targetDir,
+        harness: ['claude']
+      })
+      assert.ok(!result.isError)
+      await readFile(join(targetDir, 'CLAUDE.md'), 'utf8')
+      await assert.rejects(() => readFile(join(targetDir, '.codex', 'config.toml'), 'utf8'))
+      // Core assets are still written regardless of harness selection.
+      await readFile(join(targetDir, 'scripts', 'verify-workflow.mjs'), 'utf8')
+
+      const bad = await callTool('co_worker_compile', {
+        workflow: workflowPath,
+        out: targetDir,
+        harness: ['bogus']
+      })
+      assert.ok(bad.isError)
+      assert.match(text(bad), /Unknown harness "bogus"/)
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
   })
 
   it('drives the full in-agent loop: quickstart, next, approve', async () => {
