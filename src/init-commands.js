@@ -1,10 +1,12 @@
 import { access } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 import { compileWorkflow, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { renderDemoAgentScript } from './demo-agent-template.js'
+import { detectAgents, realAgentCommand, knownAgentIds } from './agent-detect.js'
 import {
   getReusableAgentTeam,
   listReusableAgentTeams
@@ -102,7 +104,7 @@ export async function runQuickstart(args) {
   const result = await quickstartProject(options)
   console.log(`Wrote workflow template ${result.template}: ${result.workflowPath}`)
   console.log(`Compiled ${result.assetCount} harness assets into ${result.targetDir}`)
-  printQuickstartNextSteps(result.targetDir, result.demo, options.open)
+  printQuickstartNextSteps(result.targetDir, result.demo, options.open, result.detectedAgents)
 }
 
 // Runs the quickstart pipeline (scaffold + compile + optional demo) and returns
@@ -131,15 +133,44 @@ export async function quickstartProject(options) {
   await scaffoldPackageJson(workflow, targetDir)
   await writeDemoAgent(targetDir)
 
-  const demo = options.demo ? await runQuickstartDemo(workflow, targetDir, options.runId) : null
+  const detectedAgents = detectAgents()
+  const realPlan = resolveRealAgentPlan(options, detectedAgents)
+  const demo = options.demo
+    ? await runQuickstartDemo(workflow, targetDir, options, realPlan)
+    : null
 
   return {
     targetDir,
     template,
     workflowPath: workflowResult.written[0],
     assetCount: compileResult.written.length,
-    demo
+    demo,
+    detectedAgents
   }
+}
+
+// Decide whether this quickstart should drive a real agent CLI instead of the
+// bundled offline demo. Only opts in when the user passed --real: with --agent
+// we honor that choice if it is installed, otherwise fall back to the first
+// detected agent, otherwise report that none was found so the caller can run the
+// offline demo and say so honestly.
+function resolveRealAgentPlan(options, detectedAgents) {
+  if (!options.real) {
+    return { real: false }
+  }
+
+  if (options.agent) {
+    if (detectedAgents.includes(options.agent)) {
+      return { real: true, agentId: options.agent, agentCommand: realAgentCommand(options.agent) }
+    }
+    return { real: false, requestedButMissing: true, requestedAgent: options.agent }
+  }
+
+  const chosen = detectedAgents[0]
+  if (chosen) {
+    return { real: true, agentId: chosen, agentCommand: realAgentCommand(chosen) }
+  }
+  return { real: false, requestedButMissing: true, requestedAgent: '' }
 }
 
 // The quickstart workflow's stages gate on a bundled offline demo agent so a
@@ -158,12 +189,31 @@ async function writeDemoAgent(targetDir) {
 // command, so it gets the headline flow: drive every owner agent end to end.
 // Templates without a persisted agent command (minimal, production-feature) fall
 // back to the lighter manual-seed demo so they still populate the console.
-async function runQuickstartDemo(workflow, targetDir, runId) {
+async function runQuickstartDemo(workflow, targetDir, options, realPlan) {
   const normalized = validateWorkflow(workflow)
-  if (workflow.orchestration && workflow.orchestration.agentCommand) {
-    return runInvokeDemo(normalized, targetDir, runId)
+
+  // --real: drive an installed agent CLI so the run produces real work at the
+  // swap-seam artifact path (the same gates cascade). Use its own run id so the
+  // real run does not collide with a later offline demo on "local".
+  if (realPlan.real) {
+    const runId = options.runIdSpecified ? options.runId : 'real'
+    return runInvokeDemo(normalized, targetDir, runId, {
+      agentCommand: realPlan.agentCommand,
+      agentId: realPlan.agentId
+    })
   }
-  return runManualSeedDemo(normalized, targetDir, runId)
+
+  if (realPlan.requestedButMissing) {
+    const want = realPlan.requestedAgent ? `"${realPlan.requestedAgent}"` : 'a supported agent CLI'
+    console.log(
+      `--real requested but ${want} was not found on PATH (looked for ${knownAgentIds().join(', ')}). Running the offline demo instead.`
+    )
+  }
+
+  if (workflow.orchestration && workflow.orchestration.agentCommand) {
+    return runInvokeDemo(normalized, targetDir, options.runId)
+  }
+  return runManualSeedDemo(normalized, targetDir, options.runId)
 }
 
 // Drive a real orchestration run with --invoke so the bundled demo agent does
@@ -173,30 +223,68 @@ async function runQuickstartDemo(workflow, targetDir, runId) {
 // stops at the single human-approval gate. Exit code 1 just means that human
 // gate is (correctly) still open, so only a spawn error downgrades to a skip.
 // The run id matches `approve`'s default ("local") so finishing is one command.
-async function runInvokeDemo(normalized, targetDir, runId) {
+async function runInvokeDemo(normalized, targetDir, runId, real = null) {
   const finalStage = normalized.stages[normalized.stages.length - 1]
   const manualGate = (finalStage.gates || []).find((gate) => gate.type === 'manual')
   const scriptPath = resolve(targetDir, 'scripts', 'orchestrate-workflow.mjs')
-  const result = spawnSync(
-    process.execPath,
-    [scriptPath, '--run-id', runId, '--invoke'],
-    { cwd: targetDir, encoding: 'utf8' }
-  )
+  const usingReal = Boolean(real && real.agentCommand)
+  const invokeArgs = [scriptPath, '--run-id', runId, '--invoke']
+  if (usingReal) {
+    // Override the persisted demo command with the detected agent so its output
+    // lands at the stable artifact path and the same gates go green on real work.
+    invokeArgs.push('--agent-command', real.agentCommand)
+  }
+  const result = spawnSync(process.execPath, invokeArgs, { cwd: targetDir, encoding: 'utf8' })
 
   if (result.error) {
-    console.log(
-      `Skipped demo orchestration (${result.error.message}). Run it yourself: node scripts/orchestrate-workflow.mjs --run-id ${runId} --invoke`
-    )
+    const rerun = usingReal
+      ? `node scripts/orchestrate-workflow.mjs --run-id ${runId} --invoke --agent-command '${real.agentCommand}'`
+      : `node scripts/orchestrate-workflow.mjs --run-id ${runId} --invoke`
+    console.log(`Skipped ${usingReal ? 'real-agent' : 'demo'} orchestration (${result.error.message}). Run it yourself: ${rerun}`)
     return { ran: false, runId }
+  }
+
+  // Trust the orchestration state, not the exit code: only claim the agents drove
+  // the run to the approval gate if every non-manual gate actually passed. A real
+  // agent that produced nothing leaves command gates red, so we report honestly
+  // where it stalled instead of pretending real work happened.
+  const stalledStage = firstUnfinishedStage(targetDir, runId)
+  if (stalledStage) {
+    return { ran: true, drove: false, stalled: true, real: usingReal, agentId: usingReal ? real.agentId : '', runId, stalledStage }
   }
 
   return {
     ran: true,
     drove: true,
+    real: usingReal,
+    agentId: usingReal ? real.agentId : '',
     runId,
     approveStage: finalStage.id,
     approveGate: manualGate ? manualGate.id : ''
   }
+}
+
+// Read the persisted run state and return the id of the first stage still holding
+// a non-manual gate open (i.e. the agents did not finish it), or '' when every
+// command gate passed and only human approval remains. Missing/unreadable state
+// counts as unfinished so we never overclaim success.
+function firstUnfinishedStage(targetDir, runId) {
+  const statePath = resolve(targetDir, '.tpan-opt-co-worker', 'orchestrations', runId, 'state.json')
+  let state
+  try {
+    state = JSON.parse(readFileSync(statePath, 'utf8'))
+  } catch {
+    return 'unknown'
+  }
+  for (const stage of state.stages || []) {
+    const commandGatesOpen = (stage.gates || []).some(
+      (gate) => gate.type !== 'manual' && gate.status !== 'passed'
+    )
+    if (commandGatesOpen) {
+      return stage.id
+    }
+  }
+  return ''
 }
 
 // Fallback demo for templates that do not persist an agent command: pre-approve
@@ -239,17 +327,34 @@ async function runManualSeedDemo(normalized, targetDir, runId) {
   return { ran: true, drove: false, runId }
 }
 
-function printQuickstartNextSteps(targetDir, demo, open) {
+function printQuickstartNextSteps(targetDir, demo, open, detectedAgents = []) {
   const consolePath = resolve(targetDir, '.tpan-opt-co-worker', 'console', 'index.html')
-  const artifactsPath = resolve(targetDir, '.tpan-opt-co-worker', 'demo', 'artifacts')
+  const real = Boolean(demo && demo.real)
+  const artifactsPath = resolve(
+    targetDir,
+    '.tpan-opt-co-worker',
+    ...(real ? ['artifacts'] : ['demo', 'artifacts'])
+  )
 
   console.log('')
   console.log('Quickstart ready.')
-  if (demo && demo.ran && demo.drove) {
+  if (demo && demo.ran && demo.drove && real) {
+    console.log(
+      `Your ${demo.agentId} agent team just ran end to end: planner -> engineer -> reviewer -> lead each did their stage and produced REAL work (run "${demo.runId}").`
+    )
+    console.log(`See what they wrote: ${artifactsPath}`)
+  } else if (demo && demo.ran && demo.drove) {
     console.log(
       `Your agent team just ran end to end: planner -> engineer -> reviewer -> lead each did their stage and produced an artifact (run "${demo.runId}").`
     )
     console.log(`See what they wrote: ${artifactsPath}`)
+    console.log('Note: this was the bundled OFFLINE demo agent — placeholder artifacts, not real work.')
+  } else if (demo && demo.ran && demo.stalled) {
+    const who = demo.agentId ? `The ${demo.agentId} agent run` : 'The run'
+    const where = demo.stalledStage && demo.stalledStage !== 'unknown' ? ` at stage "${demo.stalledStage}"` : ''
+    console.log(`${who} did not complete every stage${where} — its command gate is still open (no artifact with real content yet).`)
+    console.log('Open the console to see where it stopped, then fix and re-run:')
+    console.log('  tpan-opt-co-worker quickstart --real --force')
   } else if (demo && demo.ran) {
     console.log(`Seeded a demo orchestration run "${demo.runId}" so the console shows live stage progress.`)
   }
@@ -265,17 +370,32 @@ function printQuickstartNextSteps(targetDir, demo, open) {
   console.log('')
   if (demo && demo.ran && demo.approveGate) {
     const stageFlag = demo.approveStage ? ` --stage ${demo.approveStage}` : ''
+    const runFlag = demo.runId && demo.runId !== 'local' ? ` --run-id ${demo.runId}` : ''
     console.log('Everything the agents could do is done — one human approval is left. Approve to finish:')
-    console.log(`  tpan-opt-co-worker approve ${demo.approveGate}${stageFlag} --by you`)
-  } else {
+    console.log(`  tpan-opt-co-worker approve ${demo.approveGate}${stageFlag} --by you${runFlag}`)
+  } else if (!(demo && demo.stalled)) {
     console.log('Drive the workflow yourself: node scripts/orchestrate-workflow.mjs --run-id local --invoke')
   }
+
   console.log('')
-  console.log('Run the same flow with a REAL agent (swaps the bundled demo agent):')
-  console.log('  node scripts/orchestrate-workflow.mjs --run-id real --invoke --loop \\')
-  console.log("    --agent-command 'claude -p \"You are the {role}. Do stage {stage} from brief {brief}. Write your result to .tpan-opt-co-worker/artifacts/{stage}.md\"'")
-  console.log('  (swap `claude -p` for `codex exec`, `cursor-agent`, … — any agent CLI works.)')
-  console.log('  Then approve: tpan-opt-co-worker approve human_approval --stage ship --by you --run-id real')
+  if (demo && demo.stalled) {
+    // The stalled message above already told them how to re-run; don't repeat.
+  } else if (real) {
+    // Already ran for real; just point at how to iterate.
+    console.log('That was a real agent run. Re-run any time with: tpan-opt-co-worker quickstart --real --force')
+  } else if (detectedAgents.length > 0) {
+    // The honest, low-friction upgrade: an agent is installed, so one flag turns
+    // the demo into a real run instead of asking the user to hand-write a command.
+    console.log(`Detected ${detectedAgents.join(', ')} on your PATH. Run the same flow for REAL with one flag:`)
+    console.log(`  tpan-opt-co-worker quickstart --real --force${detectedAgents.length > 1 ? ` --agent ${detectedAgents[0]}` : ''}`)
+    console.log('  (writes each stage to .tpan-opt-co-worker/artifacts/{stage}.md; the same gates cascade.)')
+  } else {
+    console.log('Run the same flow with a REAL agent: install claude, codex, or cursor-agent, then:')
+    console.log('  tpan-opt-co-worker quickstart --real --force')
+    console.log('  (or drive it yourself: node scripts/orchestrate-workflow.mjs --run-id real --invoke --loop \\')
+    console.log("     --agent-command 'claude -p \"You are the {role}. Do stage {stage} from brief {brief}. Write your result to .tpan-opt-co-worker/artifacts/{stage}.md\"')")
+  }
+
   console.log('')
   console.log('Then make it yours: edit opt.workflow.json (or the console Designer) and re-apply:')
   console.log('  tpan-opt-co-worker compile --workflow opt.workflow.json --out . --force')
@@ -522,7 +642,10 @@ function parseQuickstartArgs(args) {
     force: false,
     demo: true,
     open: true,
-    runId: 'local'
+    runId: 'local',
+    runIdSpecified: false,
+    real: false,
+    agent: ''
   }
 
   for (let index = 0; index < args.length; index += 1) {
@@ -564,6 +687,19 @@ function parseQuickstartArgs(args) {
 
     if (arg === '--run-id') {
       options.runId = requireNextValue(args, index, '--run-id')
+      options.runIdSpecified = true
+      index += 1
+      continue
+    }
+
+    if (arg === '--real') {
+      options.real = true
+      continue
+    }
+
+    if (arg === '--agent') {
+      options.agent = requireNextValue(args, index, '--agent')
+      options.real = true
       index += 1
       continue
     }
@@ -611,11 +747,15 @@ export function printQuickstartHelp() {
   const defaultTeam = listReusableAgentTeams()[0].id
 
   console.log(`Usage:
-  tpan-opt-co-worker quickstart --out . [--template opt-demo] [--team ${defaultTeam}] [--name workflow-name] [--no-demo] [--no-open] [--force]
+  tpan-opt-co-worker quickstart --out . [--template opt-demo] [--team ${defaultTeam}] [--name workflow-name] [--real [--agent <id>]] [--no-demo] [--no-open] [--force]
 
 Scaffold opt.workflow.json, compile every harness asset, bundle an offline demo
 agent, and (by default) run the four-role team end to end with --invoke so the
 console shows a real, populated run that stops at a single human approval.
+
+With --real, drive an installed agent CLI (claude, codex, cursor-agent) instead
+of the offline demo so the run produces real work; falls back to the offline
+demo (and says so) when no supported agent is on PATH.
 
 Options:
   --out <dir>       Output repository directory. Defaults to current directory.
@@ -623,7 +763,9 @@ Options:
   --team <id>       Reusable agent team id. Uses the team's recommended template unless --template is set.
   --policy <id>     Organization policy pack id. Can be repeated.
   --name <id>       Workflow name. Defaults to the selected template's default name.
-  --run-id <id>     Demo orchestration run id. Defaults to local (so \`approve\` finishes it).
+  --real            Drive an installed agent CLI for real work instead of the offline demo.
+  --agent <id>      Which detected agent to use with --real (claude, codex, cursor-agent). Implies --real.
+  --run-id <id>     Demo orchestration run id. Defaults to local (real runs default to real).
   --no-demo         Scaffold and compile only; do not run the demo orchestration.
   --no-open         Do not open the console in a browser when finishing.
   --force           Overwrite existing files in the output directory.

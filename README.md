@@ -57,12 +57,18 @@ This clones the repo and registers the `co-worker` MCP server automatically (via
 
 That is the OPT loop in miniature: agents do the work, a human approves the gate that matters.
 
-**Run the same flow with a real agent.** The quickstart's stage gates are agent-neutral — each passes once that stage's artifact exists at `.tpan-opt-co-worker/artifacts/<stage>.md`, no matter who wrote it. So point the orchestrator at a real agent CLI and tell it to write there; the same four stages cascade and still stop at the one human gate:
+**Run the same flow with a real agent.** If you have an agent CLI installed (`claude`, `codex`, or `cursor-agent`), add `--real` — quickstart detects it and drives the real agent instead of the offline demo, so the four stages produce real work at `.tpan-opt-co-worker/artifacts/<stage>.md` and still stop at the one human gate:
+
+```bash
+tpan-opt-co-worker quickstart --out . --real --force
+tpan-opt-co-worker approve human_approval --stage ship --by you --run-id real
+```
+
+Pick a specific agent with `--agent codex`. If no supported agent is on PATH, quickstart says so and runs the offline demo instead; the default run always labels its artifacts as an offline placeholder, so you can tell a demo from real work. Under the hood `--real` is just the orchestrator's agent-neutral `--invoke`/`--agent-command` adapter — the stage gates pass once an artifact with real content exists, no matter who wrote it, so you can also drive it by hand:
 
 ```bash
 node scripts/orchestrate-workflow.mjs --run-id real --invoke --loop \
   --agent-command 'claude -p "You are the {role}. Do stage {stage} from brief {brief}. Write your result to .tpan-opt-co-worker/artifacts/{stage}.md"'
-tpan-opt-co-worker approve human_approval --stage ship --by you --run-id real
 ```
 
 Swap `claude -p` for `codex exec`, `cursor-agent`, or any agent CLI — the orchestrator substitutes `{stage}` / `{role}` / `{brief}` / `{skills}` / `{mcpServers}` / `{hooks}` and runs it once per ready stage. Commit the command into the workflow under `orchestration.agentCommand` (the `wizard` prompts for it) so `--invoke` needs no flags on later runs.
@@ -83,7 +89,7 @@ It scaffolds `opt.workflow.json`, compiles every harness asset, bundles an offli
 open /path/to/target-repo/.tpan-opt-co-worker/console/index.html
 ```
 
-The console shows every stage `done`, the populated agent-invocation log, and one open work order — your approval — so you see a team of agents actually deliver work before learning any other command. The artifacts they wrote are under `.tpan-opt-co-worker/demo/artifacts/`. Add `--no-demo` to scaffold without running the team, or `--template production-feature` for a delivery workflow with real check gates. The command also prints a ready-to-paste line for re-running the same flow with a real agent CLI instead of the bundled demo agent.
+The console shows every stage `done`, the populated agent-invocation log, and one open work order — your approval — so you see a team of agents actually deliver work before learning any other command. This default run uses the bundled **offline demo agent** — its artifacts (under `.tpan-opt-co-worker/demo/artifacts/`) are labelled placeholders, not real work. Add `--real` to drive an installed agent CLI (`claude`/`codex`/`cursor-agent`) for real output instead; if the command detects an agent on your PATH it also prints the exact one-flag line to re-run for real. Add `--no-demo` to scaffold without running the team, or `--template production-feature` for a delivery workflow with real check gates.
 
 Everything the agents could do is done; one human approval is left. Finish it with a single command (the same core as the `co_worker_approve` MCP tool, so CLI and in-agent flows behave identically):
 
