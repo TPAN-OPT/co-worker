@@ -89,6 +89,8 @@ node src/cli.js quickstart --out /path/to/target-repo --name my-workflow
 open /path/to/target-repo/.tpan-opt-co-worker/console/index.html
 ```
 
+想要实时视图?运行 `node src/cli.js serve --out /path/to/target-repo`,在 `http://127.0.0.1:4318/` 打开一个可交互的 console:gate 通过时它会自动刷新,还能直接在浏览器里审批人工 gate(效果同下面的 `approve` 命令)。
+
 console 显示每个阶段都 `done`、一张填满的 agent 调用记录表,以及唯一一张打开的工单——你的审批——所以你在学习任何其他命令之前,就先看到一支 agent 团队真的交付了工作。这次默认运行用的是内置的**离线 demo agent**——它写出的工件(在 `.tpan-opt-co-worker/demo/artifacts/`)是标注了的占位内容,而非真实工作。加 `--real` 改用已安装的 agent CLI(`claude`/`codex`/`cursor-agent`)产出真实内容;若命令在你的 PATH 上检测到 agent,它还会打印出用来真实重跑的那一行 `--real` 命令。加 `--no-demo` 只 scaffold 不跑团队;或用 `--template production-feature` 选带真实检查 gate 的交付 workflow。
 
 agent 能做的都做完了,只剩一道人工审批。一条命令收尾(与 `co_worker_approve` MCP 工具共享同一套核心,所以命令行与 agent 内行为完全一致)：
@@ -613,8 +615,11 @@ tpan-opt-co-worker status [--out .] [--run-id <id>]
 tpan-opt-co-worker next [--out .] [--run-id <id>]
 tpan-opt-co-worker dashboard [--out .]
 tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
+tpan-opt-co-worker serve [--out .] [--port 4318] [--host 127.0.0.1] [--no-open]
 tpan-opt-co-worker mcp
 ```
+
+`serve` 把静态 console 变成一个实时、可交互的看板:一个零依赖的 `node:http` server(只绑定 `127.0.0.1`)把同一个 console 放到 `http://127.0.0.1:4318/`,通过 Server-Sent Events 把编排状态与运行状态的变化推送到浏览器(所以 gate 通过时页面会自动刷新),并新增一个 **Live Approvals** 面板,可以就地审批人工 gate —— 它调用的正是与 CLI `approve` 相同的 `approveGate` 核心,随后推进编排器并显示下一个待审批的 gate。它是可选的:编译出的 console 仍是一份可直接打开的、可移植的静态产物。按 Ctrl+C 停止;加 `--no-open` 可跳过自动打开浏览器。
 
 `status`、`next`、`dashboard`、`approve` 用于在命令行里驱动一个已编译的仓库。`status` 打印 workflow 和每个阶段的编排状态(在 `team` 模式下还会指向 `PLAYBOOK.md`);`next` 打印打开的工单和下一步动作;两者默认看最新一次运行,并接受 `--run-id <id>` 查看某一次具体的编排运行(例如真实 agent 调用产生的 `real` 运行);`dashboard` 把每个产品/模块的最新一次验证运行并排汇总成一张表 —— 这是 team 模式的视角:每个队友在不同模块上跑同一套流程(用 `node scripts/run-workflow.mjs --module <名称>` 给运行打标签);`approve <gate> --by <approver>` 为某个人工 gate 记录审批证据并推进编排器 —— 这样你就不用手写 `manual-evidence.json`。当某个 gate id 在多个阶段复用时,加 `--stage`。它们与 MCP 的 `co_worker_next` / `co_worker_approve` 共用核心,所以 CLI 与 agent 内的行为一致。`mcp` 启动 MCP server(见 [以插件方式安装（MCP）](#以插件方式安装mcp)）。
 
@@ -688,6 +693,8 @@ tpan-opt-co-worker mcp
 生成的 `.tpan-opt-co-worker/catalog.json`、`.tpan-opt-co-worker/marketplace.json` 和 `.tpan-opt-co-worker/console/catalog.js` 会暴露组织级 workflow templates、policy packs、可复用 teams，以及面向 skills、MCP servers 和 hooks 的 marketplace packages。
 
 生成的 `.tpan-opt-co-worker/console/index.html` 是可直接在浏览器打开的静态 workflow console，用于查看 workflow 标识、organization team/policy 元数据、角色归属、阶段顺序、manual/command gate 分布，包含一个可编辑的 Workflow Designer 面板：它在浏览器中按与 compiler 相同的结构规则（名称、角色、owner、阶段依赖、gate）校验 workflow 草稿，并提供编辑后 JSON 的复制与下载——而 CLI `compile` 仍是写入资产的权威校验器——同时给出 schema 路径，并展示可复用 templates/policies/teams 的 organization catalog 面板、marketplace package discovery、run summary 状态统计、可按状态筛选的 run history、每次 run 的 `evidence.json` 和 `summary.md` 直达链接，以及匹配筛选条件的每次 run gate details；gate details 会在可用时展示 command 文本、exit code、审批人、备注和安全 evidence links；`.tpan-opt-co-worker/console/runs.js` 为默认数据源，`.tpan-opt-co-worker/console/runs.json` 作为 fallback。
+
+想要这同一个 console 的实时可交互版本,运行 `tpan-opt-co-worker serve`(见上文 [更多命令](#更多命令参考) 里的 `serve` 命令):它把该文件通过 `http://127.0.0.1:4318/` 提供出去,随编排与运行状态变化自动刷新,并新增一个 Live Approvals 面板可在浏览器里审批人工 gate。直接打开文件依然完全受支持 —— `serve` 是可选的。
 
 生成的本地 runner 会读取 manifest、调用验证脚本、写出标准 run 目录、更新 `.tpan-opt-co-worker/runs/index.json`，并把 run index 和 gate details 镜像到 `.tpan-opt-co-worker/console/runs.json` 和 `.tpan-opt-co-worker/console/runs.js` 供静态 console 使用：
 

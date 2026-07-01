@@ -20,6 +20,15 @@ describe('CLI', () => {
     assert.match(stdout, /--team product-delivery/)
     assert.match(stdout, /--policy quality-standard/)
     assert.match(stdout, /--name workflow-name/)
+    assert.match(stdout, /tpan-opt-co-worker serve \[--out \.\] \[--port 4318\]/)
+  })
+
+  it('prints serve help with a successful exit code', async () => {
+    const { stdout } = await execFileAsync('node', [cliPath, 'serve', '--help'])
+
+    assert.match(stdout, /tpan-opt-co-worker serve/)
+    assert.match(stdout, /Binds to 127\.0\.0\.1 only/)
+    assert.match(stdout, /--no-open/)
   })
 
   it('documents template-specific init default names', async () => {

@@ -23,6 +23,7 @@ import { runWizard } from './wizard-commands.js'
 import { runMcpServer } from './mcp-server.js'
 import { runApprove, runDashboard, runNext, runStatus } from './ops-commands.js'
 import { renderWorkflowSchema } from './schema-renderer.js'
+import { runServe } from './serve-command.js'
 import { stageGates } from './stage-gates.js'
 
 async function main(argv) {
@@ -110,6 +111,11 @@ async function main(argv) {
 
   if (command === 'dashboard') {
     await runDashboard(argv.slice(3))
+    return
+  }
+
+  if (command === 'serve') {
+    await runServe(argv.slice(3))
     return
   }
 
@@ -468,6 +474,7 @@ Usage:
   tpan-opt-co-worker next [--out .] [--run-id <id>]
   tpan-opt-co-worker dashboard [--out .]
   tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
+  tpan-opt-co-worker serve [--out .] [--port 4318] [--host 127.0.0.1] [--no-open]
   tpan-opt-co-worker mcp
 
 Commands:
@@ -477,6 +484,7 @@ Commands:
   next       Show the open work order(s) and the next action.
   dashboard  Aggregate the latest verification run per product/module (team mode).
   approve    Approve a manual gate (record evidence) and advance the orchestrator.
+  serve      Serve the console as a live, interactive dashboard (approve gates in the browser).
   mcp        Run the MCP server (stdio) so Codex, Claude Code, and MCP-capable agents can call co-worker tools.
   init       Create a starter opt.workflow.json template.
   validate   Validate a workflow definition without writing generated assets.

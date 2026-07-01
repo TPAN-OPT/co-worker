@@ -89,6 +89,8 @@ It scaffolds `opt.workflow.json`, compiles every harness asset, bundles an offli
 open /path/to/target-repo/.tpan-opt-co-worker/console/index.html
 ```
 
+Prefer a live view? Run `node src/cli.js serve --out /path/to/target-repo` for an interactive console at `http://127.0.0.1:4318/` that auto-refreshes as gates pass and lets you approve manual gates right in the browser (same effect as the `approve` command below).
+
 The console shows every stage `done`, the populated agent-invocation log, and one open work order — your approval — so you see a team of agents actually deliver work before learning any other command. This default run uses the bundled **offline demo agent** — its artifacts (under `.tpan-opt-co-worker/demo/artifacts/`) are labelled placeholders, not real work. Add `--real` to drive an installed agent CLI (`claude`/`codex`/`cursor-agent`) for real output instead; if the command detects an agent on your PATH it also prints the exact one-flag line to re-run for real. Add `--no-demo` to scaffold without running the team, or `--template production-feature` for a delivery workflow with real check gates.
 
 Everything the agents could do is done; one human approval is left. Finish it with a single command (the same core as the `co_worker_approve` MCP tool, so CLI and in-agent flows behave identically):
@@ -624,8 +626,11 @@ tpan-opt-co-worker status [--out .] [--run-id <id>]
 tpan-opt-co-worker next [--out .] [--run-id <id>]
 tpan-opt-co-worker dashboard [--out .]
 tpan-opt-co-worker approve <gate> --by <approver> [--stage <stage>] [--note <text>] [--out .] [--run-id local]
+tpan-opt-co-worker serve [--out .] [--port 4318] [--host 127.0.0.1] [--no-open]
 tpan-opt-co-worker mcp
 ```
+
+`serve` turns the static console into a live, interactive dashboard: a zero-dependency `node:http` server (bound to `127.0.0.1` only) puts the same console behind `http://127.0.0.1:4318/`, streams orchestration and run state changes to the browser over Server-Sent Events (so the page refreshes itself as gates pass), and adds a **Live Approvals** panel that approves manual gates in place — calling the exact same `approveGate` core as the CLI `approve` command, then advancing the orchestrator and surfacing the next pending gate. It is optional: the compiled console remains a portable static artifact you can open directly. Press Ctrl+C to stop; pass `--no-open` to skip auto-opening the browser.
 
 `status`, `next`, `dashboard`, and `approve` drive a compiled repository from the command line. `status` prints the workflow and each stage's orchestration status (and, in `team` mode, points to `PLAYBOOK.md`); `next` prints the open work order(s) and the next action; both default to the latest run and accept `--run-id <id>` to inspect a specific orchestration run (for example the `real` run from a real-agent invocation); `dashboard` aggregates the latest verification run per product/module into one side-by-side table — the team-mode view where each teammate runs the whole pipeline on a different module (label a run with `node scripts/run-workflow.mjs --module <name>`); `approve <gate> --by <approver>` records approver evidence for a manual gate and advances the orchestrator — so you never hand-edit `manual-evidence.json`. Pass `--stage` when a gate id is reused across stages. These share their core with the MCP `co_worker_next` / `co_worker_approve` tools, so the CLI and in-agent flows behave identically. `mcp` runs the MCP server (see [Install as a plugin (MCP)](#install-as-a-plugin-mcp)).
 
@@ -691,6 +696,8 @@ The generated `.tpan-opt-co-worker/workflow.schema.json` is a JSON Schema for wo
 The generated `.tpan-opt-co-worker/catalog.json`, `.tpan-opt-co-worker/marketplace.json`, and `.tpan-opt-co-worker/console/catalog.js` expose organization-level workflow templates, policy packs, reusable teams, and marketplace packages for skills, MCP servers, and hooks.
 
 The generated `.tpan-opt-co-worker/console/index.html` is a static workflow console that can be opened directly in a browser. It shows workflow identity, organization team/policy metadata, role ownership, stage sequence, manual/command gate distribution, an editable Workflow Designer panel that validates a workflow draft in the browser against the same structural rules the compiler enforces (names, roles, owners, stage dependencies, gates) and offers copy/download of the edited JSON — with the CLI `compile` remaining the authoritative validator that writes assets — alongside the schema path, organization catalog panels for reusable templates/policies/teams, marketplace package discovery, run summary status counts, filterable run history with direct links to each run's `evidence.json` and `summary.md`, and matching per-run gate details from `.tpan-opt-co-worker/console/runs.js` with `.tpan-opt-co-worker/console/runs.json` as a data fallback. Gate details include command text, exit codes, approver, notes, and safe evidence links where available.
+
+For a live, interactive version of this same console, run `tpan-opt-co-worker serve` (see the `serve` command in [More commands](#more-commands-reference)): it serves the file over `http://127.0.0.1:4318/`, auto-refreshes as orchestration and run state change, and adds a Live Approvals panel that approves manual gates in the browser. Opening the file directly stays fully supported — `serve` is optional.
 
 The generated local runner reads the manifest, invokes verification, writes a standard run directory, updates `.tpan-opt-co-worker/runs/index.json`, and mirrors the run index plus gate details to `.tpan-opt-co-worker/console/runs.json` and `.tpan-opt-co-worker/console/runs.js` for the static console:
 
