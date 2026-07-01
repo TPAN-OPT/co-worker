@@ -111,7 +111,7 @@ The quickstart repo already contains a working example of everything in the "Wha
 
 - **Workflow Designer** — edit stages, roles, gates, and approvals in the console Designer panel or `opt.workflow.json`, then check it: `node src/cli.js validate --workflow /path/to/target-repo/opt.workflow.json`.
 - **Agent Team Builder** — each role compiles to a per-harness agent file (`.claude/agents/<role>.md`, `.codex/agents/<role>.toml`, `.opencode/agents/<role>.md`); browse reusable teams with `node src/cli.js teams`.
-- **Skill / MCP / Hook registry** — `node src/cli.js catalog` lists templates, policy packs, and teams; `node src/cli.js marketplace` lists skills, MCP servers, and hooks; `node src/cli.js presets` lists gate presets.
+- **Skill / MCP / Hook registry** — `node src/cli.js catalog` lists templates, policy packs, and teams; narrow with `--kind marketplace` (skills, MCP servers, hooks) or `--kind presets` (gate presets).
 - **Harness adapter layer** — one workflow fans out to every harness; see the generated files with `ls .codex .claude .cursor opencode.json .github/workflows scripts`.
 - **Quality gates** — `node scripts/verify-workflow.mjs` runs the stage gates and stops at the first failing or unmet one.
 - **Evidence chain** — `node scripts/run-workflow.mjs --run-id local` records `.tpan-opt-co-worker/runs/local/evidence.json` and `summary.md`.
@@ -135,34 +135,22 @@ Create a starter workflow in a target repository without compiling or running a 
 node src/cli.js init --out /path/to/target-repo --name production-feature-workflow
 ```
 
-List the combined built-in catalog before initializing a workflow:
+Browse the built-in catalog before initializing a workflow. One command is the
+discovery surface — `--kind` narrows it to a single slice:
 
 ```bash
-node src/cli.js catalog
-node src/cli.js catalog --json
-node src/cli.js catalog --out catalog.json
+node src/cli.js catalog                       # combined summary
+node src/cli.js catalog --json                # combined, machine-readable
+node src/cli.js catalog --out catalog.json    # write the combined artifact
+node src/cli.js catalog --kind templates      # just workflow templates
+node src/cli.js catalog --kind policies       # organization policy packs
+node src/cli.js catalog --kind teams          # reusable agent teams
+node src/cli.js catalog --kind presets        # gate presets
+node src/cli.js catalog --kind marketplace    # marketplace packages (preview)
 ```
 
-List built-in workflow templates:
-
-```bash
-node src/cli.js templates
-node src/cli.js templates --json
-```
-
-List built-in organization policy packs:
-
-```bash
-node src/cli.js policies
-node src/cli.js policies --json
-```
-
-List reusable agent teams:
-
-```bash
-node src/cli.js teams
-node src/cli.js teams --json
-```
+The historical `templates` / `policies` / `teams` / `presets` / `marketplace`
+subcommands still work as aliases for the matching `catalog --kind`.
 
 Create a starter workflow from a reusable team recommendation:
 
@@ -223,8 +211,8 @@ node src/cli.js schema --out /path/to/target-repo/workflow.schema.json
 List built-in gate presets before designing an organization workflow:
 
 ```bash
-node src/cli.js presets
-node src/cli.js presets --json
+node src/cli.js catalog --kind presets
+node src/cli.js catalog --kind presets --json
 ```
 
 Preview generated repository assets:
@@ -359,14 +347,17 @@ Team Standard
 You design **one** workflow — stages, sub-nodes, gates, and the tools each step uses.
 The top-level `mode` field only changes *who you hand it to*:
 
-- **`mode: opt`** (default) — hand it to code agents. Drive them with the orchestrator:
-  `node scripts/orchestrate-workflow.mjs --invoke --loop` auto-advances through every
-  stage until a human gate, scoping each agent to that step's skills/MCP/hooks.
-- **`mode: team`** — hand it to human teammates. Compiling emits **`PLAYBOOK.md`**, a
-  copy-paste checklist each person runs on their own product or module. Track everyone
-  side by side with **`tpan-opt-co-worker dashboard`** (one labelled run per module).
+- **`mode: opt`** (default) — hand it to code agents. Compiling emits every agent
+  harness (Claude Code, Codex, Cursor, OpenCode) plus the playbook. Drive them with the
+  orchestrator: `node scripts/orchestrate-workflow.mjs --invoke --loop` auto-advances
+  through every stage until a human gate, scoping each agent to that step's skills/MCP/hooks.
+- **`mode: team`** — hand it to human teammates. Compiling emits **`PLAYBOOK.md`** (and the
+  core assets) but skips the agent-CLI files no human will open — a copy-paste checklist
+  each person runs on their own product or module. Track everyone side by side with
+  **`tpan-opt-co-worker dashboard`** (one labelled run per module).
 
-The definition is identical; only the distribution target differs.
+The definition is identical; only the distribution target — and therefore which files
+`compile` writes — differs. Override the mode default any time with `compile --harness`.
 
 A stage can hold **sub-nodes** (for example `ai-test` → `unit`, `integration`,
 `user-acceptance`), and any stage or sub-node can bind its own `skills`, `mcpServers`,
@@ -627,13 +618,8 @@ tpan-opt-co-worker wizard --out . [--force]
 tpan-opt-co-worker init --out . [--template production-feature] [--team product-delivery] [--policy quality-standard] [--name production-feature-workflow] [--force]
 tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
 tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
-tpan-opt-co-worker catalog [--json] [--out catalog.json] [--force]
-tpan-opt-co-worker presets [--json]
-tpan-opt-co-worker templates [--json]
-tpan-opt-co-worker policies [--json]
-tpan-opt-co-worker teams [--json]
-tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
-tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
+tpan-opt-co-worker catalog [--kind presets|templates|policies|teams|marketplace] [--json] [--out catalog.json] [--force]
+tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--harness claude|codex|cursor|opencode|team] [--preset-file gate-presets.json] [--force] [--dry-run]
 tpan-opt-co-worker status [--out .] [--run-id <id>]
 tpan-opt-co-worker next [--out .] [--run-id <id>]
 tpan-opt-co-worker dashboard [--out .]
@@ -655,17 +641,9 @@ The default `production-feature` template uses the built-in `node:test` and `nod
 
 `schema` prints the workflow JSON Schema to stdout by default, or writes it to `--out` with the same overwrite protection used by generated assets.
 
-`catalog` lists the combined built-in catalog as text or JSON, including gate presets, workflow templates, organization policy packs, and reusable agent teams. Use `--out` to write a stable JSON artifact for Web Console, marketplace, or organization registry tooling; existing files require `--force`.
+`catalog` is the single discovery surface. With no arguments it prints a combined summary (gate presets, workflow templates, organization policy packs, reusable agent teams, and marketplace packages) as text or JSON. `--kind <presets|templates|policies|teams|marketplace>` narrows the output to one slice. Use `--out` to write a stable combined JSON artifact for Web Console or organization registry tooling; existing files require `--force` (not valid with `--kind`). The standalone `presets` / `templates` / `policies` / `teams` / `marketplace` commands remain as thin aliases for the matching `catalog --kind`.
 
-`presets` lists the built-in gate preset catalog as text or JSON, which is useful when designing organization-level workflow templates and policy registries.
-
-`templates` lists the built-in workflow template catalog as text or JSON, which is the first local building block for organization-level reusable delivery flows.
-
-`policies` lists built-in organization policy packs as text or JSON, including quality, human-control, and security baselines that can later be attached to reusable templates and workflows.
-
-`teams` lists reusable agent team catalogs as text or JSON, including recommended role sets plus template and policy associations for future organization-level workflow generation.
-
-`marketplace` lists built-in distribution package metadata for reusable skills, MCP server profiles, and portable hook packages. This is a metadata preview only: package installation is not yet implemented, and the referenced `install.files` are descriptive targets rather than shipped assets. Use `--out` to write a marketplace JSON artifact that can seed future registries, web-console package pickers, or organization-approved package mirrors.
+The `marketplace` slice is a metadata preview only: package installation is not yet implemented, and the referenced `install.files` are descriptive targets rather than shipped assets (see the Roadmap).
 
 Generated files:
 
@@ -693,6 +671,8 @@ Generated files:
 - `scripts/orchestrate-workflow.mjs`
 - `scripts/run-workflow.mjs`
 - `scripts/verify-workflow.mjs`
+
+By default `compile` emits every harness in `opt` mode, or just the team playbook in `team` mode (see [Two modes](#two-modes-one-workflow-two-ways-to-hand-it-out)). Pass `--harness <claude|codex|cursor|opencode|team>` (comma-separated, repeatable) to write only the files for the harnesses you use — the core assets (workflow manifest, schema, static console, scripts, and CI) are always written regardless. This keeps a repo from filling with ~30 files it will never open.
 
 The compiler validates workflow shape, rejects unknown stage owners, rejects duplicate stage ids, blocks path traversal, and refuses to overwrite existing files unless `--force` is provided.
 
@@ -949,6 +929,19 @@ Custom preset names cannot override built-in preset names.
 - [x] Add a web console for workflow design and run tracking.
 - [x] Add organization-level templates, policies, and reusable agent teams.
 - [x] Add marketplace-style distribution for skills, MCP servers, and hooks.
+- [x] Collapse the standalone discovery commands into `catalog --kind` (with backward-compatible aliases).
+- [x] Add `compile --harness` so a repo can generate only the harness files it uses.
+- [x] Fork generated output by `mode`: `team` compiles the human playbook, `opt` compiles the agent harnesses.
+
+### Planned (not in the current package)
+
+These are described in this README as direction, but are **not** shipped yet:
+
+- Marketplace **package installation** — the `catalog --kind marketplace` slice is a
+  metadata preview; `install.files` are descriptive targets, not shipped assets.
+- **YAML** workflow authoring — the compiler currently reads JSON workflow files only.
+- **Hosted orchestration** — running the orchestrator as a managed service rather than
+  a local script, and fully autonomous multi-agent coordination.
 
 ## Design Principles
 

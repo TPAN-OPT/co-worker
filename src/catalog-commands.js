@@ -11,8 +11,70 @@ import { listMarketplacePackages } from './marketplace-catalog.js'
 import { listOrganizationPolicyPacks } from './policy-catalog.js'
 import { listWorkflowTemplates } from './workflow-template.js'
 
+// The catalog is the single discovery surface. Each "kind" is one slice of the
+// combined catalog; `catalog --kind <id>` prints that slice, and the historical
+// standalone commands (presets/templates/policies/teams/marketplace) are thin
+// aliases onto the same renderers so nothing that scripted against them breaks.
+const CATALOG_KINDS = {
+  presets: {
+    jsonKey: 'presets',
+    heading: 'Built-in gate presets:',
+    load: () => createPresetSummary(),
+    line: (preset) =>
+      `- ${preset.id} [${preset.type}] ${preset.description}${preset.command ? ` -> ${preset.command}` : ''}`
+  },
+  templates: {
+    jsonKey: 'templates',
+    heading: 'Workflow templates:',
+    load: () => listWorkflowTemplates(),
+    line: (template) => `- ${template.id}: ${template.description}`
+  },
+  policies: {
+    jsonKey: 'policies',
+    heading: 'Organization policy packs:',
+    load: () => listOrganizationPolicyPacks(),
+    line: (policy) => `- ${policy.id}: ${policy.description}`
+  },
+  teams: {
+    jsonKey: 'teams',
+    heading: 'Reusable agent teams:',
+    load: () => listReusableAgentTeams(),
+    line: (team) => `- ${team.id}: ${team.roles.join(', ')} - ${team.description}`
+  },
+  marketplace: {
+    jsonKey: 'marketplace',
+    heading:
+      'Marketplace distribution packages (metadata preview; install is not yet implemented):',
+    load: () => listMarketplacePackages(),
+    line: (item) => `- ${item.id} [${item.type}] ${item.description}`
+  }
+}
+
+const CATALOG_KIND_IDS = Object.keys(CATALOG_KINDS)
+
+function printCatalogKind(kind, options) {
+  const spec = CATALOG_KINDS[kind]
+  const items = spec.load()
+
+  if (options.json) {
+    console.log(`${JSON.stringify({ [spec.jsonKey]: items }, null, 2)}\n`)
+    return
+  }
+
+  console.log(spec.heading)
+  for (const item of items) {
+    console.log(spec.line(item))
+  }
+}
+
 export async function runCatalog(args) {
   const options = parseCatalogArgs(args)
+
+  if (options.kind) {
+    printCatalogKind(options.kind, options)
+    return
+  }
+
   const catalog = createCatalog()
   const content = renderCatalogJson()
 
@@ -51,18 +113,7 @@ export async function runPresets(args) {
     command: 'presets',
     jsonDescription: 'Print built-in gate presets as machine-readable JSON.'
   })
-  const presets = createPresetSummary()
-
-  if (options.json) {
-    console.log(`${JSON.stringify({ presets }, null, 2)}\n`)
-    return
-  }
-
-  console.log('Built-in gate presets:')
-  for (const preset of presets) {
-    const command = preset.command ? ` -> ${preset.command}` : ''
-    console.log(`- ${preset.id} [${preset.type}] ${preset.description}${command}`)
-  }
+  printCatalogKind('presets', options)
 }
 
 export async function runTemplates(args) {
@@ -70,17 +121,7 @@ export async function runTemplates(args) {
     command: 'templates',
     jsonDescription: 'Print workflow templates as machine-readable JSON.'
   })
-  const templates = listWorkflowTemplates()
-
-  if (options.json) {
-    console.log(`${JSON.stringify({ templates }, null, 2)}\n`)
-    return
-  }
-
-  console.log('Workflow templates:')
-  for (const template of templates) {
-    console.log(`- ${template.id}: ${template.description}`)
-  }
+  printCatalogKind('templates', options)
 }
 
 export async function runPolicies(args) {
@@ -88,17 +129,7 @@ export async function runPolicies(args) {
     command: 'policies',
     jsonDescription: 'Print organization policy packs as machine-readable JSON.'
   })
-  const policies = listOrganizationPolicyPacks()
-
-  if (options.json) {
-    console.log(`${JSON.stringify({ policies }, null, 2)}\n`)
-    return
-  }
-
-  console.log('Organization policy packs:')
-  for (const policy of policies) {
-    console.log(`- ${policy.id}: ${policy.description}`)
-  }
+  printCatalogKind('policies', options)
 }
 
 export async function runTeams(args) {
@@ -106,17 +137,7 @@ export async function runTeams(args) {
     command: 'teams',
     jsonDescription: 'Print reusable agent teams as machine-readable JSON.'
   })
-  const teams = listReusableAgentTeams()
-
-  if (options.json) {
-    console.log(`${JSON.stringify({ teams }, null, 2)}\n`)
-    return
-  }
-
-  console.log('Reusable agent teams:')
-  for (const team of teams) {
-    console.log(`- ${team.id}: ${team.roles.join(', ')} - ${team.description}`)
-  }
+  printCatalogKind('teams', options)
 }
 
 export async function runMarketplace(args) {
@@ -126,7 +147,6 @@ export async function runMarketplace(args) {
     outDescription: 'Write marketplace catalog JSON to a file.',
     outExample: 'marketplace.json'
   })
-  const marketplace = listMarketplacePackages()
   const content = renderMarketplaceJson()
 
   if (options.out) {
@@ -146,22 +166,13 @@ export async function runMarketplace(args) {
     return
   }
 
-  if (options.json) {
-    console.log(content)
-    return
-  }
-
-  console.log('Marketplace distribution packages (metadata preview; install is not yet implemented):')
-  for (const marketplacePackage of marketplace) {
-    console.log(
-      `- ${marketplacePackage.id} [${marketplacePackage.type}] ${marketplacePackage.description}`
-    )
-  }
+  printCatalogKind('marketplace', options)
 }
 
 function parseCatalogArgs(args) {
   const options = {
     json: false,
+    kind: '',
     out: '',
     force: false
   }
@@ -171,6 +182,18 @@ function parseCatalogArgs(args) {
 
     if (arg === '--json') {
       options.json = true
+      continue
+    }
+
+    if (arg === '--kind') {
+      const kind = requireNextValue(args, index, '--kind')
+      if (!Object.hasOwn(CATALOG_KINDS, kind)) {
+        throw new Error(
+          `Unknown catalog kind "${kind}". Use one of: ${CATALOG_KIND_IDS.join(', ')}`
+        )
+      }
+      options.kind = kind
+      index += 1
       continue
     }
 
@@ -191,6 +214,12 @@ function parseCatalogArgs(args) {
     }
 
     throw new Error(`Unknown catalog option "${arg}"`)
+  }
+
+  if (options.kind && options.out) {
+    throw new Error(
+      'catalog --kind cannot be combined with --out (only the combined catalog is writable)'
+    )
   }
 
   return options
@@ -257,11 +286,12 @@ function parseWritableJsonArgs(args, help) {
 
 function printCatalogHelp() {
   console.log(`Usage:
-  tpan-opt-co-worker catalog [--json] [--out catalog.json] [--force]
+  tpan-opt-co-worker catalog [--kind <${CATALOG_KIND_IDS.join('|')}>] [--json] [--out catalog.json] [--force]
 
 Options:
-  --json        Print the combined catalog as machine-readable JSON.
-  --out <path>  Write the combined catalog JSON to a file.
+  --kind <id>   Print one slice of the catalog (${CATALOG_KIND_IDS.join(', ')}).
+  --json        Print the catalog (or the selected --kind) as machine-readable JSON.
+  --out <path>  Write the combined catalog JSON to a file. Not valid with --kind.
   --force       Overwrite an existing catalog file.
 `)
 }
@@ -269,6 +299,8 @@ Options:
 function printJsonOnlyHelp(help) {
   console.log(`Usage:
   tpan-opt-co-worker ${help.command} [--json]
+
+Alias for: tpan-opt-co-worker catalog --kind ${help.command}
 
 Options:
   --json  ${help.jsonDescription}
@@ -278,6 +310,8 @@ Options:
 function printWritableJsonHelp(help) {
   console.log(`Usage:
   tpan-opt-co-worker ${help.command} [--json] [--out ${help.outExample || 'catalog.json'}] [--force]
+
+Alias for: tpan-opt-co-worker catalog --kind ${help.command}
 
 Options:
   --json        ${help.jsonDescription}

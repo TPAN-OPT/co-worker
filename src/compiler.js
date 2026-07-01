@@ -311,26 +311,80 @@ function normalizeOrganization(organization) {
   }
 }
 
-export function compileWorkflow(input) {
+// Agent-CLI harnesses the compiler can emit files for. "team" (PLAYBOOK.md) is
+// the human-distribution target, kept separate so `mode: team` can default to it
+// alone. Every other file is "core" — the workflow manifest, schema, console,
+// scripts, and CI — and is always written regardless of harness selection.
+export const AGENT_HARNESSES = ['claude', 'codex', 'cursor', 'opencode']
+export const SELECTABLE_HARNESSES = [...AGENT_HARNESSES, 'team']
+
+// Parse a --harness flag value: a comma-separated list, validated against the
+// selectable set so an unknown target fails fast instead of silently emitting
+// nothing. Shared by the compile CLI and quickstart so both accept the same form.
+export function parseHarnessSelection(value) {
+  return value.split(',').map((entry) => {
+    const harness = entry.trim()
+    if (!SELECTABLE_HARNESSES.includes(harness)) {
+      throw new Error(
+        `Unknown harness "${harness}". Use one of: ${SELECTABLE_HARNESSES.join(', ')}`
+      )
+    }
+    return harness
+  })
+}
+
+// Resolve which harness file sets to emit. An explicit selection always wins.
+// Otherwise the workflow mode decides: "team" hands the process to human
+// teammates, so it emits only the playbook (+ core); "opt" drives code agents,
+// so it emits every agent harness (+ the playbook), preserving prior behavior.
+function resolveSelectedHarnesses(workflow, requested) {
+  if (Array.isArray(requested) && requested.length > 0) {
+    return new Set(requested)
+  }
+  if (workflow.mode === 'team') {
+    return new Set(['team'])
+  }
+  return new Set(SELECTABLE_HARNESSES)
+}
+
+// Keep an output when it is core (untagged) or when any of its harness tags is
+// in the selected set. `harness` may be a string or an array (for files a few
+// harnesses share, such as a root .mcp.json).
+function outputMatchesHarnesses(output, selected) {
+  if (!output.harness) {
+    return true
+  }
+  const tags = Array.isArray(output.harness) ? output.harness : [output.harness]
+  return tags.some((tag) => selected.has(tag))
+}
+
+export function compileWorkflow(input, options = {}) {
   const workflow = validateWorkflow(input)
+  const selected = resolveSelectedHarnesses(workflow, options.harnesses)
   const roleOutputs = Object.entries(workflow.roles).map(([roleId, role]) => ({
     path: `.codex/agents/${roleId}.toml`,
-    content: renderAgentToml(roleId, role, workflow)
+    content: renderAgentToml(roleId, role, workflow),
+    harness: 'codex'
   }))
   const claudeRoleOutputs = Object.entries(workflow.roles).map(([roleId, role]) => ({
     path: `.claude/agents/${roleId}.md`,
-    content: renderClaudeAgentMarkdown(roleId, role, workflow)
+    content: renderClaudeAgentMarkdown(roleId, role, workflow),
+    harness: 'claude'
   }))
   const openCodeRoleOutputs = Object.entries(workflow.roles).map(([roleId, role]) => ({
     path: `.opencode/agents/${roleId}.md`,
-    content: renderOpenCodeAgentMarkdown(roleId, role, workflow)
+    content: renderOpenCodeAgentMarkdown(roleId, role, workflow),
+    harness: 'opencode'
   }))
 
   const mcpOutputs = workflowHasMcpServers(workflow)
     ? [
         {
           path: '.mcp.json',
-          content: renderMcpJson(workflow)
+          content: renderMcpJson(workflow),
+          // Claude, Cursor, and OpenCode read a root .mcp.json; Codex gets its
+          // servers from .codex/config.toml, so it is not tagged codex here.
+          harness: ['claude', 'cursor', 'opencode']
         }
       ]
     : []
@@ -338,7 +392,8 @@ export function compileWorkflow(input) {
     ? [
         {
           path: '.claude/settings.json',
-          content: renderClaudeSettings(workflow)
+          content: renderClaudeSettings(workflow),
+          harness: 'claude'
         },
         {
           path: '.tpan-opt-co-worker/hooks.json',
@@ -347,33 +402,38 @@ export function compileWorkflow(input) {
       ]
     : []
 
-  return [
+  const outputs = [
     {
       path: 'AGENTS.md',
       content: renderAgentsMarkdown(workflow)
     },
     {
       path: 'CLAUDE.md',
-      content: renderClaudeMarkdown(workflow)
+      content: renderClaudeMarkdown(workflow),
+      harness: 'claude'
     },
     {
       path: 'PLAYBOOK.md',
-      content: renderPlaybookMarkdown(workflow)
+      content: renderPlaybookMarkdown(workflow),
+      harness: 'team'
     },
     {
       path: '.codex/config.toml',
-      content: renderCodexConfig(workflow)
+      content: renderCodexConfig(workflow),
+      harness: 'codex'
     },
     ...roleOutputs,
     ...claudeRoleOutputs,
     ...openCodeRoleOutputs,
     {
       path: '.cursor/rules/tpan-opt-co-worker.mdc',
-      content: renderCursorRule(workflow)
+      content: renderCursorRule(workflow),
+      harness: 'cursor'
     },
     {
       path: 'opencode.json',
-      content: renderOpenCodeConfig()
+      content: renderOpenCodeConfig(),
+      harness: 'opencode'
     },
     ...mcpOutputs,
     ...hooksOutputs,
@@ -452,6 +512,10 @@ export function compileWorkflow(input) {
       content: renderOrchestratorScript()
     }
   ]
+
+  return outputs
+    .filter((output) => outputMatchesHarnesses(output, selected))
+    .map(({ path, content }) => ({ path, content }))
 }
 
 const EMPTY_RUN_HISTORY = { runs: [], details: {} }

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
-import { compileWorkflow, validateWorkflow } from './compiler.js'
+import { SELECTABLE_HARNESSES, compileWorkflow, parseHarnessSelection, validateWorkflow } from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { renderDemoAgentScript } from './demo-agent-template.js'
 import { detectAgents, realAgentCommand, knownAgentIds } from './agent-detect.js'
@@ -125,7 +125,7 @@ export async function quickstartProject(options) {
     { force: options.force }
   )
 
-  const outputs = compileWorkflow(workflow)
+  const outputs = compileWorkflow(workflow, { harnesses: options.harnesses })
   const compileResult = await writeCompiledOutputs(outputs, targetDir, {
     force: options.force
   })
@@ -175,8 +175,7 @@ function resolveRealAgentPlan(options, detectedAgents) {
 
 // The quickstart workflow's stages gate on a bundled offline demo agent so a
 // fresh repo can run the whole team end to end with no agent CLI or network.
-// Written for every quickstart (even --no-demo) so the persisted
-// orchestration.agentCommand is runnable immediately.
+// Written for every quickstart (even --no-demo) so orchestration.agentCommand runs.
 async function writeDemoAgent(targetDir) {
   await writeCompiledOutputs(
     [{ path: 'scripts/demo-agent.mjs', content: renderDemoAgentScript() }],
@@ -186,9 +185,8 @@ async function writeDemoAgent(targetDir) {
 }
 
 // Seed the console with a demo run. The opt-demo template persists an agent
-// command, so it gets the headline flow: drive every owner agent end to end.
-// Templates without a persisted agent command (minimal, production-feature) fall
-// back to the lighter manual-seed demo so they still populate the console.
+// command, so it drives every owner agent end to end; templates without one
+// (minimal, production-feature) fall back to the lighter manual-seed demo.
 async function runQuickstartDemo(workflow, targetDir, options, realPlan) {
   const normalized = validateWorkflow(workflow)
 
@@ -645,7 +643,8 @@ function parseQuickstartArgs(args) {
     runId: 'local',
     runIdSpecified: false,
     real: false,
-    agent: ''
+    agent: '',
+    harnesses: []
   }
 
   for (let index = 0; index < args.length; index += 1) {
@@ -659,6 +658,12 @@ function parseQuickstartArgs(args) {
 
     if (arg === '--name') {
       options.name = requireNextValue(args, index, '--name')
+      index += 1
+      continue
+    }
+
+    if (arg === '--harness') {
+      options.harnesses.push(...parseHarnessSelection(requireNextValue(args, index, '--harness')))
       index += 1
       continue
     }
@@ -765,6 +770,7 @@ Options:
   --name <id>       Workflow name. Defaults to the selected template's default name.
   --real            Drive an installed agent CLI for real work instead of the offline demo.
   --agent <id>      Which detected agent to use with --real (claude, codex, cursor-agent). Implies --real.
+  --harness <id>    Only compile files for this harness (${SELECTABLE_HARNESSES.join(', ')}). Comma-separated, repeatable. Core assets are always written.
   --run-id <id>     Demo orchestration run id. Defaults to local (real runs default to real).
   --no-demo         Scaffold and compile only; do not run the demo orchestration.
   --no-open         Do not open the console in a browser when finishing.

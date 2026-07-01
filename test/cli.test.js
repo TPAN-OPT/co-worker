@@ -14,11 +14,8 @@ describe('CLI', () => {
     const { stdout } = await execFileAsync('node', [cliPath, '--help'])
 
     assert.ok(stdout.includes('TPAN-OPT/CO-WORKER'))
-    assert.match(stdout, /tpan-opt-co-worker templates \[--json\]/)
-    assert.match(stdout, /tpan-opt-co-worker policies \[--json\]/)
-    assert.match(stdout, /tpan-opt-co-worker teams \[--json\]/)
-    assert.match(stdout, /tpan-opt-co-worker marketplace \[--json\]/)
-    assert.match(stdout, /tpan-opt-co-worker catalog \[--json\]/)
+    assert.match(stdout, /tpan-opt-co-worker catalog \[--kind presets\|templates\|policies\|teams\|marketplace\]/)
+    assert.match(stdout, /--harness claude\|codex\|cursor\|opencode\|team/)
     assert.match(stdout, /--template production-feature/)
     assert.match(stdout, /--team product-delivery/)
     assert.match(stdout, /--policy quality-standard/)
@@ -405,6 +402,58 @@ describe('CLI', () => {
         await readFile(join(targetDir, '.tpan-opt-co-worker', 'catalog.json'), 'utf8')
       )
       assert.equal(catalog.teams[0].id, 'product-delivery')
+    } finally {
+      await rm(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('narrows compiled harness files with --harness', async () => {
+    const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
+    const workflowPath = join(targetDir, 'opt.workflow.json')
+
+    try {
+      await writeFile(
+        workflowPath,
+        JSON.stringify({
+          name: 'harness-cli-workflow',
+          version: '1.0.0',
+          roles: { planner: { skills: ['x'], permissions: ['read_repo'] } },
+          stages: [{ id: 'clarify', owner: 'planner', gates: ['approved'] }]
+        })
+      )
+
+      const { stdout } = await execFileAsync('node', [
+        cliPath,
+        'compile',
+        '--workflow',
+        workflowPath,
+        '--out',
+        targetDir,
+        '--harness',
+        'claude'
+      ])
+
+      assert.match(stdout, /CLAUDE\.md/)
+      assert.doesNotMatch(stdout, /\.codex\/config\.toml/)
+      assert.doesNotMatch(stdout, /opencode\.json/)
+      assert.doesNotMatch(stdout, /PLAYBOOK\.md/)
+      // Core assets are still written regardless of harness selection.
+      assert.match(stdout, /scripts\/verify-workflow\.mjs/)
+
+      await assert.rejects(
+        () =>
+          execFileAsync('node', [
+            cliPath,
+            'compile',
+            '--workflow',
+            workflowPath,
+            '--out',
+            targetDir,
+            '--harness',
+            'bogus'
+          ]),
+        /Unknown harness "bogus"/
+      )
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }

@@ -219,6 +219,46 @@ describe('catalog CLI', () => {
     assert.equal(result.marketplace[0].id, 'skill:tdd-workflow')
   })
 
+  it('prints each catalog slice via catalog --kind', async () => {
+    const cases = [
+      ['presets', /Built-in gate presets/, /node:test/],
+      ['templates', /Workflow templates/, /opt-demo/],
+      ['policies', /Organization policy packs/, /quality-standard/],
+      ['teams', /Reusable agent teams/, /product-delivery/],
+      ['marketplace', /Marketplace distribution packages/, /skill:tdd-workflow/]
+    ]
+
+    for (const [kind, heading, sample] of cases) {
+      const { stdout } = await execFileAsync('node', [cliPath, 'catalog', '--kind', kind])
+      assert.match(stdout, heading)
+      assert.match(stdout, sample)
+    }
+  })
+
+  it('prints a catalog slice as JSON via catalog --kind', async () => {
+    const { stdout } = await execFileAsync('node', [
+      cliPath,
+      'catalog',
+      '--kind',
+      'templates',
+      '--json'
+    ])
+    const result = JSON.parse(stdout)
+    assert.equal(result.templates[0].id, 'production-feature')
+    assert.ok(result.templates.some((template) => template.id === 'opt-demo'))
+  })
+
+  it('rejects an unknown catalog kind and --kind with --out', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'catalog', '--kind', 'bogus']),
+      /Unknown catalog kind "bogus"/
+    )
+    await assert.rejects(
+      () => execFileAsync('node', [cliPath, 'catalog', '--kind', 'presets', '--out', 'x.json']),
+      /catalog --kind cannot be combined with --out/
+    )
+  })
+
   it('writes the combined catalog with overwrite protection', async () => {
     const targetDir = await mkdtemp(join(tmpdir(), 'tpan-opt-co-worker-cli-'))
     const catalogPath = join(targetDir, 'catalog.json')
