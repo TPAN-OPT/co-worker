@@ -14,10 +14,12 @@
 // run cascades stage by stage and the console shows a populated invocation log.
 //
 // The --check gate is agent-neutral on purpose: it passes once a stage artifact
-// exists at EITHER the bundled demo path OR the stable agent path
-// `.tpan-opt-co-worker/artifacts/<stage>.md`. That second path is the swap seam —
-// point the orchestrator at a real agent (Claude Code, Codex, …) and tell it to
-// write its stage result there, and the same gates cascade with zero demo code.
+// with real content exists at EITHER the bundled demo path OR the stable agent
+// path `.tpan-opt-co-worker/artifacts/<stage>.md`. That second path is the swap
+// seam — point the orchestrator at a real agent (Claude Code, Codex, …) and tell
+// it to write its stage result there, and the same gates cascade with zero demo
+// code. The check requires substantive content (not just an existing file) so an
+// empty or stub artifact cannot turn a gate green — verification-first by default.
 export function renderDemoAgentScript() {
   return `#!/usr/bin/env node
 // Bundled offline demo agent for TPAN-OPT/CO-WORKER (created by \`quickstart\`).
@@ -37,6 +39,10 @@ const ARTIFACT_DIR = '.tpan-opt-co-worker/demo/artifacts'
 // check accepts an artifact here as well as the demo path, so swapping in a real
 // agent cascades the same gates without touching the workflow definition.
 const AGENT_ARTIFACT_DIR = '.tpan-opt-co-worker/artifacts'
+// A stage artifact must carry at least this many non-whitespace characters to
+// pass its gate. Keeps an empty or stub file from turning a gate green while
+// staying format-agnostic so any real agent's output qualifies.
+const MIN_ARTIFACT_CHARS = 40
 
 const STAGE_BODIES = {
   clarify: [
@@ -145,11 +151,23 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2))
 
-// Gate-check mode: report whether this stage's artifact has been produced yet,
-// by the bundled demo agent or by a real agent writing to the agent path.
+// Gate-check mode: report whether this stage's artifact has been produced with
+// real content yet, by the bundled demo agent or by a real agent writing to the
+// agent path. An empty or whitespace-only file does not count.
 if (args.check) {
-  const produced = existsSync(artifactPath(args.check)) || existsSync(agentArtifactPath(args.check))
+  const produced = hasContent(artifactPath(args.check)) || hasContent(agentArtifactPath(args.check))
   process.exit(produced ? 0 : 1)
+}
+
+function hasContent(path) {
+  if (!existsSync(path)) {
+    return false
+  }
+  try {
+    return readFileSync(path, 'utf8').trim().length >= MIN_ARTIFACT_CHARS
+  } catch {
+    return false
+  }
 }
 
 const stage = args.stage || process.env.TPAN_OPT_STAGE || 'stage'

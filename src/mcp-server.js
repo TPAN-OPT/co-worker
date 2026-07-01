@@ -38,6 +38,16 @@ const TOOLS = [
         demo: {
           type: 'boolean',
           description: 'Run the demo orchestration. Defaults to true.'
+        },
+        real: {
+          type: 'boolean',
+          description:
+            'Drive an installed agent CLI (claude, codex, cursor-agent) for real work instead of the offline demo. Falls back to the demo when none is on PATH. Defaults to false.'
+        },
+        agent: {
+          type: 'string',
+          enum: ['claude', 'codex', 'cursor-agent'],
+          description: 'Which detected agent to use with real mode. Implies real=true.'
         }
       },
       required: ['out']
@@ -204,7 +214,10 @@ async function quickstartTool(args) {
     policyIds: [],
     force: true,
     demo: args.demo !== false,
-    runId: 'local'
+    real: args.real === true || typeof args.agent === 'string',
+    agent: typeof args.agent === 'string' ? args.agent : '',
+    runId: 'local',
+    runIdSpecified: false
   })
 
   const consolePath = resolve(result.targetDir, '.tpan-opt-co-worker', 'console', 'index.html')
@@ -214,7 +227,9 @@ async function quickstartTool(args) {
   ]
   if (result.demo && result.demo.ran && result.demo.drove) {
     lines.push(
-      `Drove the agent team end to end (run "${result.demo.runId}"): each owner agent produced an artifact and the run is blocked on one human approval.`
+      result.demo.real
+        ? `Drove the ${result.demo.agentId} agent team end to end (run "${result.demo.runId}") for REAL work: each owner agent produced an artifact and the run is blocked on one human approval.`
+        : `Drove the OFFLINE demo agent team end to end (run "${result.demo.runId}"): placeholder artifacts, not real work; the run is blocked on one human approval.`
     )
     if (result.demo.approveGate) {
       const stageFlag = result.demo.approveStage ? ` stage ${result.demo.approveStage}` : ''
@@ -222,6 +237,10 @@ async function quickstartTool(args) {
         `Finish it: call co_worker_approve for gate ${result.demo.approveGate}${stageFlag}, approved by you.`
       )
     }
+  } else if (result.demo && result.demo.ran && result.demo.stalled) {
+    const who = result.demo.agentId ? `The ${result.demo.agentId} agent run` : 'The run'
+    const where = result.demo.stalledStage && result.demo.stalledStage !== 'unknown' ? ` at stage "${result.demo.stalledStage}"` : ''
+    lines.push(`${who} did not complete every stage${where}: a command gate is still open (no artifact with real content). Open the console to see where it stopped.`)
   } else if (result.demo && result.demo.ran) {
     lines.push(`Seeded demo orchestration run "${result.demo.runId}".`)
   }
