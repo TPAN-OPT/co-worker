@@ -227,6 +227,7 @@ export function printQuickstartNextSteps(targetDir, demo, open, detectedAgents =
   } else {
     console.log(`Open the console in a browser: ${consolePath}`)
   }
+  console.log('Or serve it live (auto-refresh + approve gates in the browser): tpan-opt-co-worker serve')
 
   console.log('')
   if (demo && demo.ran && demo.approveGate) {
