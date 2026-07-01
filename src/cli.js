@@ -11,7 +11,12 @@ import {
   runTeams,
   runTemplates
 } from './catalog-commands.js'
-import { compileWorkflow, validateWorkflow } from './compiler.js'
+import {
+  SELECTABLE_HARNESSES,
+  compileWorkflow,
+  parseHarnessSelection,
+  validateWorkflow
+} from './compiler.js'
 import { writeCompiledOutputs } from './file-system.js'
 import { runInit, runQuickstart } from './init-commands.js'
 import { runWizard } from './wizard-commands.js'
@@ -124,7 +129,7 @@ async function runCompile(args) {
   const workflow = await readWorkflow(workflowPath)
   const externalGatePresets = await readExternalGatePresets(options.presetFiles)
   const mergedWorkflow = mergeWorkflowGatePresets(workflow, externalGatePresets)
-  const outputs = compileWorkflow(mergedWorkflow)
+  const outputs = compileWorkflow(mergedWorkflow, { harnesses: options.harnesses })
   const result = await writeCompiledOutputs(outputs, targetDir, {
     force: options.force,
     dryRun: options.dryRun
@@ -193,6 +198,7 @@ function parseCompileArgs(args) {
     workflow: 'opt.workflow.json',
     out: '.',
     presetFiles: [],
+    harnesses: [],
     force: false,
     dryRun: false
   }
@@ -208,6 +214,15 @@ function parseCompileArgs(args) {
 
     if (arg === '--out') {
       options.out = requireNextValue(args, index, '--out')
+      index += 1
+      continue
+    }
+
+    if (arg === '--harness') {
+      options.harnesses = [
+        ...options.harnesses,
+        ...parseHarnessSelection(requireNextValue(args, index, '--harness'))
+      ]
       index += 1
       continue
     }
@@ -446,14 +461,9 @@ Usage:
   tpan-opt-co-worker wizard --out . [--force]
   tpan-opt-co-worker init --out . [--template production-feature] [--team ${defaultTeam}] [--policy quality-standard] [--name workflow-name] [--force]
   tpan-opt-co-worker validate --workflow opt.workflow.json [--preset-file gate-presets.json] [--json]
-  tpan-opt-co-worker catalog [--json]
-  tpan-opt-co-worker presets [--json]
-  tpan-opt-co-worker templates [--json]
-  tpan-opt-co-worker policies [--json]
-  tpan-opt-co-worker teams [--json]
-  tpan-opt-co-worker marketplace [--json] [--out marketplace.json] [--force]
+  tpan-opt-co-worker catalog [--kind presets|templates|policies|teams|marketplace] [--json]
   tpan-opt-co-worker schema [--out workflow.schema.json] [--force]
-  tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
+  tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--harness claude|codex|cursor|opencode|team] [--preset-file gate-presets.json] [--force] [--dry-run]
   tpan-opt-co-worker status [--out .] [--run-id <id>]
   tpan-opt-co-worker next [--out .] [--run-id <id>]
   tpan-opt-co-worker dashboard [--out .]
@@ -470,15 +480,9 @@ Commands:
   mcp        Run the MCP server (stdio) so Codex, Claude Code, and MCP-capable agents can call co-worker tools.
   init       Create a starter opt.workflow.json template.
   validate   Validate a workflow definition without writing generated assets.
-  catalog    List the combined built-in catalog.
-  presets    List built-in gate presets.
-  templates  List built-in workflow templates.
-  policies   List built-in organization policy packs.
-  teams      List built-in reusable agent teams.
-  marketplace
-             List marketplace distribution packages.
+  catalog    List the built-in catalog; --kind narrows to presets/templates/policies/teams/marketplace.
   schema     Print or write the workflow JSON Schema.
-  compile    Compile a workflow definition into repository assets.
+  compile    Compile a workflow definition into repository assets (--harness narrows which harness files are written).
 `)
 }
 
@@ -506,10 +510,14 @@ Options:
 
 function printCompileHelp() {
   console.log(`Usage:
-  tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--preset-file gate-presets.json] [--force] [--dry-run]
+  tpan-opt-co-worker compile --workflow opt.workflow.json --out . [--harness <id>] [--preset-file gate-presets.json] [--force] [--dry-run]
 
 Options:
   --workflow <path>  Workflow JSON file. Defaults to opt.workflow.json.
+  --harness <id>     Only emit files for this harness (${SELECTABLE_HARNESSES.join(', ')}).
+                     Comma-separated and repeatable. Core assets (manifest, schema,
+                     console, scripts, CI) are always written. Omit to emit every
+                     harness (opt mode) or just the team playbook (team mode).
   --preset-file <path>
                      External gate preset registry JSON. Can be repeated.
   --out <dir>        Output repository directory. Defaults to current directory.
