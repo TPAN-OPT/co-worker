@@ -209,7 +209,10 @@ export function printQuickstartNextSteps(targetDir, demo, open, detectedAgents =
       `Your agent team just ran end to end: planner -> engineer -> reviewer -> lead each did their stage and produced an artifact (run "${demo.runId}").`
     )
     console.log(`See what they wrote: ${artifactsPath}`)
-    console.log('Note: this was the bundled OFFLINE demo agent — placeholder artifacts, not real work.')
+    console.log('Note: that was a DRY-RUN PREVIEW — the bundled OFFLINE demo agent wrote placeholder artifacts, not real work.')
+    if (detectedAgents.length > 0) {
+      console.log('  -> Run the exact same flow for REAL (one flag): tpan-opt-co-worker quickstart --real --force')
+    }
   } else if (demo && demo.ran && demo.stalled) {
     const who = demo.agentId ? `The ${demo.agentId} agent run` : 'The run'
     const where = demo.stalledStage && demo.stalledStage !== 'unknown' ? ` at stage "${demo.stalledStage}"` : ''

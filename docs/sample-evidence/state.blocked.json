@@ -1,0 +1,235 @@
+{
+  "schemaVersion": "tpan-opt-co-worker.orchestration/v1",
+  "workflow": {
+    "name": "opt-demo-workflow",
+    "version": "1.0.0"
+  },
+  "runId": "local",
+  "status": "blocked",
+  "currentStage": "ship",
+  "currentStages": [
+    "ship"
+  ],
+  "startedAt": "2026-07-02T00:18:34.218Z",
+  "finishedAt": "2026-07-02T00:18:35.188Z",
+  "stages": [
+    {
+      "id": "clarify",
+      "owner": "planner",
+      "output": "capability_spec",
+      "dependsOn": [],
+      "status": "done",
+      "gates": [
+        {
+          "id": "scope_documented",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check clarify"
+        }
+      ]
+    },
+    {
+      "id": "implement",
+      "owner": "engineer",
+      "output": "code_patch",
+      "dependsOn": [
+        "clarify"
+      ],
+      "status": "done",
+      "gates": [
+        {
+          "id": "change_implemented",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check implement"
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "owner": "reviewer",
+      "output": "review_report",
+      "dependsOn": [
+        "implement"
+      ],
+      "status": "done",
+      "gates": [
+        {
+          "id": "review_passed",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check review"
+        }
+      ]
+    },
+    {
+      "id": "ship",
+      "owner": "lead",
+      "output": "release_packet",
+      "dependsOn": [
+        "review"
+      ],
+      "status": "current",
+      "gates": [
+        {
+          "id": "release_packet_ready",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check ship"
+        },
+        {
+          "id": "human_approval",
+          "type": "manual",
+          "status": "pending",
+          "description": "A human lead approved the result before release."
+        }
+      ]
+    }
+  ],
+  "invocations": [
+    {
+      "stageId": "clarify",
+      "role": "planner",
+      "command": "node scripts/demo-agent.mjs --stage clarify --role planner --brief /path/to/your-repo/.tpan-opt-co-worker/orchestrations/local/brief-clarify.json",
+      "status": "completed",
+      "exitCode": 0,
+      "brief": ".tpan-opt-co-worker/orchestrations/local/brief-clarify.json",
+      "startedAt": "2026-07-02T00:18:34.302Z",
+      "finishedAt": "2026-07-02T00:18:34.384Z"
+    },
+    {
+      "stageId": "implement",
+      "role": "engineer",
+      "command": "node scripts/demo-agent.mjs --stage implement --role engineer --brief /path/to/your-repo/.tpan-opt-co-worker/orchestrations/local/brief-implement.json",
+      "status": "completed",
+      "exitCode": 0,
+      "brief": ".tpan-opt-co-worker/orchestrations/local/brief-implement.json",
+      "startedAt": "2026-07-02T00:18:34.537Z",
+      "finishedAt": "2026-07-02T00:18:34.623Z"
+    },
+    {
+      "stageId": "review",
+      "role": "reviewer",
+      "command": "node scripts/demo-agent.mjs --stage review --role reviewer --brief /path/to/your-repo/.tpan-opt-co-worker/orchestrations/local/brief-review.json",
+      "status": "completed",
+      "exitCode": 0,
+      "brief": ".tpan-opt-co-worker/orchestrations/local/brief-review.json",
+      "startedAt": "2026-07-02T00:18:34.786Z",
+      "finishedAt": "2026-07-02T00:18:34.872Z"
+    },
+    {
+      "stageId": "ship",
+      "role": "lead",
+      "command": "node scripts/demo-agent.mjs --stage ship --role lead --brief /path/to/your-repo/.tpan-opt-co-worker/orchestrations/local/brief-ship.json",
+      "status": "completed",
+      "exitCode": 0,
+      "brief": ".tpan-opt-co-worker/orchestrations/local/brief-ship.json",
+      "startedAt": "2026-07-02T00:18:35.021Z",
+      "finishedAt": "2026-07-02T00:18:35.112Z"
+    }
+  ],
+  "workOrder": {
+    "stageId": "ship",
+    "owner": "lead",
+    "output": "release_packet",
+    "role": {
+      "description": "Assembles the release packet and asks for the final human approval.",
+      "skills": [
+        "verification-loop"
+      ],
+      "permissions": [
+        "read_repo",
+        "write_docs"
+      ]
+    },
+    "required": [],
+    "tooling": {
+      "skills": [],
+      "mcpServers": [],
+      "hooks": []
+    },
+    "nodes": [],
+    "agents": {
+      "codex": ".codex/agents/lead.toml",
+      "claudeCode": ".claude/agents/lead.md",
+      "openCode": ".opencode/agents/lead.md",
+      "cursor": [
+        ".cursor/rules/tpan-opt-co-worker.mdc"
+      ]
+    },
+    "pendingGates": [
+      {
+        "id": "human_approval",
+        "type": "manual",
+        "status": "pending",
+        "reason": "Attach approval evidence with a non-empty \"approvedBy\" field."
+      }
+    ],
+    "invocation": {
+      "stageId": "ship",
+      "role": "lead",
+      "command": "node scripts/demo-agent.mjs --stage ship --role lead --brief /path/to/your-repo/.tpan-opt-co-worker/orchestrations/local/brief-ship.json",
+      "status": "completed",
+      "exitCode": 0,
+      "brief": ".tpan-opt-co-worker/orchestrations/local/brief-ship.json",
+      "startedAt": "2026-07-02T00:18:35.021Z",
+      "finishedAt": "2026-07-02T00:18:35.112Z"
+    },
+    "nextAction": "Attach approval evidence for manual gate(s): human_approval."
+  },
+  "workOrders": [
+    {
+      "stageId": "ship",
+      "owner": "lead",
+      "output": "release_packet",
+      "role": {
+        "description": "Assembles the release packet and asks for the final human approval.",
+        "skills": [
+          "verification-loop"
+        ],
+        "permissions": [
+          "read_repo",
+          "write_docs"
+        ]
+      },
+      "required": [],
+      "tooling": {
+        "skills": [],
+        "mcpServers": [],
+        "hooks": []
+      },
+      "nodes": [],
+      "agents": {
+        "codex": ".codex/agents/lead.toml",
+        "claudeCode": ".claude/agents/lead.md",
+        "openCode": ".opencode/agents/lead.md",
+        "cursor": [
+          ".cursor/rules/tpan-opt-co-worker.mdc"
+        ]
+      },
+      "pendingGates": [
+        {
+          "id": "human_approval",
+          "type": "manual",
+          "status": "pending",
+          "reason": "Attach approval evidence with a non-empty \"approvedBy\" field."
+        }
+      ],
+      "invocation": {
+        "stageId": "ship",
+        "role": "lead",
+        "command": "node scripts/demo-agent.mjs --stage ship --role lead --brief /path/to/your-repo/.tpan-opt-co-worker/orchestrations/local/brief-ship.json",
+        "status": "completed",
+        "exitCode": 0,
+        "brief": ".tpan-opt-co-worker/orchestrations/local/brief-ship.json",
+        "startedAt": "2026-07-02T00:18:35.021Z",
+        "finishedAt": "2026-07-02T00:18:35.112Z"
+      },
+      "nextAction": "Attach approval evidence for manual gate(s): human_approval."
+    }
+  ]
+}
