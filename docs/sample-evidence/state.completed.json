@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "tpan-opt-co-worker.orchestration/v1",
+  "workflow": {
+    "name": "opt-demo-workflow",
+    "version": "1.0.0"
+  },
+  "runId": "local",
+  "status": "completed",
+  "currentStage": null,
+  "currentStages": [],
+  "startedAt": "2026-07-02T00:18:35.482Z",
+  "finishedAt": "2026-07-02T00:18:35.787Z",
+  "stages": [
+    {
+      "id": "clarify",
+      "owner": "planner",
+      "output": "capability_spec",
+      "dependsOn": [],
+      "status": "done",
+      "gates": [
+        {
+          "id": "scope_documented",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check clarify"
+        }
+      ]
+    },
+    {
+      "id": "implement",
+      "owner": "engineer",
+      "output": "code_patch",
+      "dependsOn": [
+        "clarify"
+      ],
+      "status": "done",
+      "gates": [
+        {
+          "id": "change_implemented",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check implement"
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "owner": "reviewer",
+      "output": "review_report",
+      "dependsOn": [
+        "implement"
+      ],
+      "status": "done",
+      "gates": [
+        {
+          "id": "review_passed",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check review"
+        }
+      ]
+    },
+    {
+      "id": "ship",
+      "owner": "lead",
+      "output": "release_packet",
+      "dependsOn": [
+        "review"
+      ],
+      "status": "done",
+      "gates": [
+        {
+          "id": "release_packet_ready",
+          "type": "command",
+          "status": "passed",
+          "exitCode": 0,
+          "command": "node scripts/demo-agent.mjs --check ship"
+        },
+        {
+          "id": "human_approval",
+          "type": "manual",
+          "status": "passed",
+          "description": "A human lead approved the result before release.",
+          "evidence": {
+            "approvedBy": "you@example.com"
+          }
+        }
+      ]
+    }
+  ],
+  "invocations": [],
+  "workOrder": null,
+  "workOrders": []
+}

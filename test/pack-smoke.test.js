@@ -105,18 +105,25 @@ describe('pack-smoke script', () => {
     const installDir = join(targetDir, 'install')
     const projectDir = join(targetDir, 'project')
 
+    // Isolate the npm cache to this run. node --test executes test files in
+    // parallel, so sharing the user's ~/.npm cache across concurrent pack/install
+    // operations races cacache and surfaces as "tarball data ... seems to be
+    // corrupted" followed by ENOENT. A per-run cache makes this test hermetic.
+    const cacheDir = join(targetDir, 'npm-cache')
+
     try {
       await mkdir(installDir)
       await mkdir(projectDir)
+      await mkdir(cacheDir)
       const packResult = await execFileAsync(
         'npm',
-        ['pack', '--json', '--pack-destination', targetDir],
+        ['pack', '--json', '--pack-destination', targetDir, '--cache', cacheDir],
         { cwd: resolve('.') }
       )
       const [packedPackage] = JSON.parse(packResult.stdout)
       const tarballPath = join(targetDir, packedPackage.filename)
 
-      await execFileAsync('npm', ['install', tarballPath, '--ignore-scripts'], {
+      await execFileAsync('npm', ['install', tarballPath, '--ignore-scripts', '--cache', cacheDir], {
         cwd: installDir
       })
 

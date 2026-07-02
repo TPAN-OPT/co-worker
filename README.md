@@ -2,9 +2,21 @@
 
 > **Language:** English | [简体中文](README.zh-CN.md)
 
-TPAN-OPT/CO-WORKER is an AI-native team operating system for designing, distributing, and verifying standardized workflows across humans, code agents, repositories, and automation harnesses.
+TPAN-OPT/CO-WORKER is the **governance layer for AI agent output**. It turns your team's delivery method into a versioned, executable workflow that routes work across AI coding agents, gates every stage on real checks, and keeps an audit-ready evidence trail. AI made everyone faster — co-worker makes that speed **auditable, reproducible, and trustworthy**.
 
-It is built for teams that want the speed of AI-assisted delivery without losing process discipline, engineering standards, security review, or proof of quality. It also supports **OPT**, or **One Person Team**, where one human lead coordinates a team of specialized AI agents to complete work that previously required a larger human team.
+Its sharpest use is **OPT — One Person Team**: one human lead running a team of specialized AI agents (planner, engineer, reviewer, release lead) through a governed process — shipping what used to take a whole team, while still passing the gates, approvals, and evidence a real team would demand.
+
+New here? Start with **[Positioning & roadmap](docs/POSITIONING.md)** for who it's for and where it's going, or run the **[Hero demo](docs/HERO-DEMO.md)** to watch a bad change get caught at a gate.
+
+### How it's different
+
+Every framework can *run* agents. co-worker governs their **output** — and is harness-neutral, so it sits on top of whatever agent you already use.
+
+| You already have | co-worker adds |
+| --- | --- |
+| An agent framework (CrewAI, LangGraph, AutoGen, Claude subagents) that wires up and runs agents | A governance layer on top: versioned workflows, real check gates, human approvals, and an audit-ready evidence trail — on any agent |
+
+Don't take our word for it: browse a **[real, committed evidence trail](docs/sample-evidence/)** (agents run → gates green → stopped at the human gate → approval recorded) with nothing to install.
 
 ## Why This Exists
 
@@ -51,7 +63,7 @@ co-worker ships a zero-dependency MCP server that exposes the whole flow as call
 
 This clones the repo and registers the `co-worker` MCP server automatically (via `.mcp.json`) — no npm install, no manual config. Now just talk to your agent; the whole point — one lead running a team of agents through a governed process — shows up in three turns:
 
-1. **Scaffold and run the team** — "Use `co_worker_quickstart` to set up a workflow in `./my-repo`." It scaffolds `opt.workflow.json`, compiles every harness asset, and drives a real four-role agent team (planner → engineer → reviewer → lead) end to end with a bundled offline demo agent. Each agent does its stage and writes an artifact; the run stops at a single human-approval gate.
+1. **Scaffold and run the team** — "Use `co_worker_quickstart` to set up a workflow in `./my-repo`." It scaffolds `opt.workflow.json`, compiles every harness asset, and runs a four-role team (planner → engineer → reviewer → lead) end to end. **By default this is a bundled _offline demo agent_: a dry-run preview of the loop whose artifacts are labelled placeholders, not real work** — it needs no agent CLI, no network, and no API spend, so you can see the whole governed flow instantly. Add `--real` (or the `real` tool arg) to drive an installed agent CLI for genuine output. Either way, each stage writes an artifact and the run stops at a single human-approval gate.
 2. **See what the team did** — open the printed `./my-repo/.tpan-opt-co-worker/console/index.html`. The console shows every stage `done`, the populated agent-invocation log, and one open work order: your approval. The artifacts the agents wrote are under `./my-repo/.tpan-opt-co-worker/demo/artifacts/`.
 3. **Approve to ship** — "Call `co_worker_approve` for gate `human_approval` in stage `ship`, approved by me, on `./my-repo`." It records your approval as evidence, advances the orchestrator, and the run is `done`.
 

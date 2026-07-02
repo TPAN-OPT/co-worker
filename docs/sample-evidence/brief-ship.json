@@ -1,0 +1,50 @@
+{
+  "workflow": {
+    "name": "opt-demo-workflow",
+    "version": "1.0.0"
+  },
+  "stageId": "ship",
+  "owner": "lead",
+  "output": "release_packet",
+  "role": {
+    "description": "Assembles the release packet and asks for the final human approval.",
+    "skills": [
+      "verification-loop"
+    ],
+    "permissions": [
+      "read_repo",
+      "write_docs"
+    ]
+  },
+  "required": [],
+  "tooling": {
+    "skills": [],
+    "mcpServers": [],
+    "hooks": []
+  },
+  "nodes": [],
+  "agents": {
+    "codex": ".codex/agents/lead.toml",
+    "claudeCode": ".claude/agents/lead.md",
+    "openCode": ".opencode/agents/lead.md",
+    "cursor": [
+      ".cursor/rules/tpan-opt-co-worker.mdc"
+    ]
+  },
+  "pendingGates": [
+    {
+      "id": "release_packet_ready",
+      "type": "command",
+      "status": "failed",
+      "reason": "Run and pass: node scripts/demo-agent.mjs --check ship"
+    },
+    {
+      "id": "human_approval",
+      "type": "manual",
+      "status": "pending",
+      "reason": "Attach approval evidence with a non-empty \"approvedBy\" field."
+    }
+  ],
+  "invocation": null,
+  "nextAction": "Fix and re-run command gate(s): release_packet_ready. Attach approval evidence for manual gate(s): human_approval."
+}
